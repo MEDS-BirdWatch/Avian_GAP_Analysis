@@ -1,0 +1,23 @@
+---
+title: "population_trends_trial"
+format: html
+---
+
+```{r}
+#| label: set-up
+# Load environment 
+library(tidyverse)
+library(here)
+
+# Source spatial join
+source(here("R", "spatial_join.R"))
+
+```
+
+```{r}
+# Some cleaning
+
+# 
+
+```
+
