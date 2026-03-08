@@ -22,12 +22,8 @@ gdb_path <- here::here('data', 'ds1327', 'tiff', 'ds1327.tif')
 # Create raster object for habitat type layer
 habitat_type <- rast(gdb_path)
 
-plot(habitat_type)
-
 # Fill raster with habitat type data layer
 activeCat(habitat_type, layer = 1) <- 'LIFEFORM'
-
-plot(habitat_type)
 
 #--------------------------------------------------------------------------------
 
@@ -42,17 +38,12 @@ gap <- st_read(here::here('data',
                quiet = TRUE) %>% 
   clean_names() 
 
-# Clean GAP data
 gap_clean <- gap %>% 
-  # Select ownership type data, GAP status codes, and management type
-  select(own_type, gap_sts, mang_type) %>% 
-  # Transform to CRS of habitat layer
-  st_transform(crs(habitat_type)) %>% 
-  
-  st_make_valid() %>%  
-  
+  select(own_type, gap_sts, mang_type, Shape) %>% 
+  st_transform(crs(habitat_type)) %>%  # transform first
+  st_cast("MULTIPOLYGON", warn = FALSE) %>%  # convert curves
+  st_make_valid() %>%  # then fix validity
   group_by(gap_sts) %>%
-  
   summarise(geometry = st_union(Shape), 
             .groups = 'drop')
 #-------------------------------------------------------------------------------
