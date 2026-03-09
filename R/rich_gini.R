@@ -1,0 +1,29 @@
+
+
+  
+  gini_simpson <- function(data) {
+      species_props <- data %>%
+        st_drop_geometry() %>%
+        group_by(gap_sts, habitat_type) %>%
+        mutate(total_obs = sum(observation_count, na.rm = TRUE)) %>%
+        group_by(gap_sts, habitat_type, common_name) %>%  
+        summarise(
+          species_obs = sum(observation_count, na.rm = TRUE),
+          total_obs = first(total_obs),
+          proportion = species_obs / total_obs,
+          .groups = 'drop'
+        )
+      
+      index <- species_props %>%
+        group_by(gap_sts, habitat_type) %>%
+        summarise(
+          richness = n_distinct(common_name),
+          gini = 1 - sum(proportion ^ 2),
+          rich_gini = richness * (1 - sum(proportion ^ 2)),
+          .groups = 'drop'
+        )
+      
+      left_join(data, index)
+    }
+
+
