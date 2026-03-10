@@ -3,8 +3,10 @@ title: "population_trends_trial"
 format: html
 ---
 ## Purpose
-This qmd is to document the trail for population trends. These trends will be accessed on placeholder species. 
-
+This qmd is to document the trail for population trends. These trends will be assessed on placeholder species. 
+1. Determine placeholder species
+2. Find matched GAP-habitat status study areas with consistent yearly data 
+3. Run population trends 
 ```{r}
 #| label: set-up
 # Load environment 
@@ -12,6 +14,7 @@ library(tidyverse)
 library(here)
 library(ggplot2)
 library(sf)
+library(MASS)
 
 # Source spatial join
 source(here("R", "spatial_join.R"))
@@ -40,8 +43,6 @@ total_obs <- birds_joined %>%
   geom_line() +
   theme_classic()
 
-# Looking into na years 
-na_years <- birds_joined %>% filter(year_collected == 2004:2009) %>% st_drop_geometry() 
 ```
 
 2. Diagnostic check - data across certain sites 
@@ -59,12 +60,6 @@ study_area_obs <- birds_joined %>%
   # Obs per site 
   mutate(obs_per_site = total_obs / n_sites) %>%
   arrange(year_collected) 
-  
-
-study_area_obs %>% 
-  ggplot(aes(year_collected, obs_per_site)) +
-  geom_line() +
-  theme_minimal()
 
 ```
 3. Diagnostic  check - Sites above threshold
@@ -88,7 +83,7 @@ consistent_periods <- year_coverage %>%
 head(consistent_periods)
 ```
 
-Large influx of data from 1988-191 due to USGS integration, maybe randomly sample points amongst those?
+Large influx of data from 1988-1991 due to USGS integration, maybe randomly sample points amongst those?
 In summary:
 
 - 1994:2006 and/or 1998-2005; 2019-2025
@@ -99,37 +94,24 @@ set.seed(1)
 # Randomly select species 
 focal_species <- sample(unique(birds_joined$common_name),2)
 
+
 # Source function
 source(here("R", "population_trend.R"))
 
-birds_joined %>% 
-    st_drop_geometry() %>% 
-    filter(common_name %in% focal_species,
-           year_collected %in% years_list) %>% 
-    group_by(common_name, year_collected) %>% 
-    mutate(total_obs = sum(observation_count, na.rm = TRUE)) %>%
-  ungroup() 
 
-
-  select(common_name, year_collected, gap_sts, habitat_type, total_obs)
-
-# Select placeholder years
+# Select placeholder years based on consistent data 
 years_list <- c(1998:2005)
 
 #Run function
 placeholder_species_trends <- population_trends(birds_joined, species_list = focal_species, years_list = years_list)
 
 # Model 
-library(MASS)
 
-focal_species_trends <- glm.nb(total_obs ~ common_name + year_collected + gap_sts * habitat_type, 
+species_trends <- glm.nb(total_obs ~ common_name + year_collected + gap_sts * habitat_type, 
                             data = placeholder_species_trends)
 
-summary(focal_species_trends)
+summary(species_trends)
 
 ```
 
-1. Determine placeholder species
-2. Find matched GAP-habitat status study areas with consistent yearly data 
-3. Run population trends 
 
