@@ -9,9 +9,10 @@ library(janitor) #2.2.1
 library(stars) #0.6-8
 library(terra) #1.8-42
 library(arcgislayers)
+library(tigris) #2.2.1
 #-------------------------------------------------------------------------------
 
-# 
+
 #----------------------------------CAL FIRE-------------------------------------
 # Source geodatabase from CAL FIRE
 gdb_path <- here::here('data', 'ds1327', 'tiff', 'ds1327.tif')
@@ -66,6 +67,14 @@ habitat_poly <- as.polygons(habitat_simple) %>%
   st_as_sf()
 #--------------------------------------------------------------------------------
 
+#-------------------------------California Shape-------------------------------
+
+ca <- states(cb = TRUE) %>% 
+  filter(STUSPS == "CA") %>% 
+  st_transform(crs(habitat_type))
+
+
+#--------------------------------------------------------------------------------
 
 #----------------------------------GAP Data-------------------------------------
 # Read in GAP data as a vector 
@@ -87,6 +96,17 @@ gap_clean <- gap %>%
             .groups = 'drop')
 #-------------------------------------------------------------------------------
 
+#-----------------------------Calculate Gap Status 5---------------------------
+gap_5 <- st_difference(ca, st_union(gap_clean)) 
+
+gap_5$gap_sts = '5'
+
+gap_5 <- gap_5 %>% 
+  select(gap_sts)
+
+gap_clean <- bind_rows(gap_clean, gap_5)
+
+#-------------------------------------------------------------------------------
 
 #------------------------------AKN data-----------------------------------------
 point_count <- read_csv(here::here('data', 'point_count.csv')) %>% 
@@ -109,7 +129,7 @@ area_intersection <- area_intersection %>%
   
 
 #------------------------------Spatial Join-------------------------------------
-# Join stars objects 
+# Join objects 
 birds_joined <- st_join(point_area_geo, gap_clean["gap_sts"])
 
 # Match vector 
@@ -119,6 +139,5 @@ birds_joined$habitat_type <- habitat_id
 
 birds_joined <- left_join(birds_joined, area_intersection)
 
-birds_joined$gap_sts[is.na(birds_joined$gap_sts)] <- 5
 #-------------------------------------------------------------------------------
 
