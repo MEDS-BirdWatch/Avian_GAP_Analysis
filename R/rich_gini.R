@@ -1,6 +1,4 @@
 
-
-  
   gini_simpson <- function(data) {
       species_props <- data %>%
         st_drop_geometry() %>%
