@@ -2,4 +2,21 @@
 title: "GLMM"
 format: html
 ---
+```{r}
+library(tidyverse) # version 2.0.0
+library(sf) #1.0-21
+library(here) #1.0.1
+library(janitor) #2.2.1
+library(stars) #0.6-8
+library(terra) #1.8-42
+library(arcgislayers)
+```
+
+```{r}
+source(here("R", "spatial_join.R"))
+```
+
+```{r}
+
+```
 
