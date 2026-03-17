@@ -69,6 +69,7 @@ habitat_poly <- as.polygons(habitat_simple) %>%
 
 #-------------------------------California Shape-------------------------------
 
+# CA shape for calculating gap status 5 (no gap) area
 ca <- states(cb = TRUE) %>% 
   filter(STUSPS == "CA") %>% 
   st_transform(crs(habitat_type))
@@ -138,6 +139,14 @@ habitat_id <- terra::extract(habitat_type, vect(birds_joined), ID = FALSE)[,1]
 birds_joined$habitat_type <- habitat_id
 
 birds_joined <- left_join(birds_joined, area_intersection)
+
+# Remove demo and test codes
+
+birds_joined <- birds_joined %>% 
+  filter(!grepl("DEMO",project_code)&
+           ! project_code %in% 'DUMM'&
+           ! grepl("Dummy",project_name) &
+           ! grepl("Test", project_name))
 
 #-------------------------------------------------------------------------------
 
