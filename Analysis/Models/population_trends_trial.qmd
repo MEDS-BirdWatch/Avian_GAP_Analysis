@@ -3,7 +3,7 @@ title: "population_trends_trial"
 format: html
 ---
 ## Purpose
-This qmd is to document the trail for population trends. These trends will be assessed on placeholder species.  The goal is to find matched GAP-habitat status study areas with consistent yearly data.
+This qmd is to document the trail for population trends. These trends will be assessed on placeholder species. The goal is to find matched GAP-habitat status study areas with consistent yearly data.
 
 ### Workflow 
 1. Find consistent time frames of observations for placeholder species. This will be change depending on our *focal species*.
@@ -80,7 +80,7 @@ study_area_obs <- birds_joined %>%
   arrange(year_collected) 
 
 ```
-3. Diagnostic  check - Sites above threshold
+3. Diagnostic check - Sites above threshold
 ```{r}
 
 year_coverage <- birds_joined %>%

@@ -26,6 +26,7 @@ birds_indicator <- birds_joined %>%
          observation_date,
          habitat_type,
          scientific_name,
+         common_name, 
          observation_count) %>%
   filter(!is.na(habitat_type), !is.na(observation_count)) %>%
   group_by(study_area, observation_date, habitat_type, scientific_name) %>%
@@ -47,15 +48,33 @@ indval <- multipatt(species_matrix,
                     group_vector,
                     duleg = TRUE,
                     control = how(nperm = 999)) 
+
+# Add common names back - prevents duplicate NAs 
+common_names <- birds_joined %>%
+  st_drop_geometry() %>%
+  distinct(scientific_name, common_name)
 ```
 
 ```{r}
 indicators <- indval$sign %>%
   rownames_to_column("species") %>%
   filter(p.value <= 0.05) %>%
+  # Add common names
+  left_join(common_names, by = c("species" = "scientific_name")) %>%
   pivot_longer(s.AGRICULTURE:s.WATER, names_to = "group", values_to = "member") %>%
   filter(member == 1) %>% 
   group_by(group) %>% 
   slice_max(stat, n = 5)
+```
+
+```{r}
+# Load pif dataset 
+pif_ca <- read_excel(here("data", "ACAD Regional 2024.06.03.xlsx")) %>% 
+  filter(BCR == c(5, 9, 15, 32, 33))
+
+# Join 
+focal_species <- indicators %>%
+  semi_join(pif_ca, by = c("species" = "Scientific Name"))
+
 ```
 
