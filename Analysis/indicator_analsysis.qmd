@@ -1,0 +1,61 @@
+---
+title: "indicator_analsysis"
+format: html
+---
+
+```{r}
+library(tidyverse) # version 2.0.0
+library(sf) #1.0-21
+library(here) #1.0.1
+library(janitor) #2.2.1
+library(stars) #0.6-8
+library(terra) #1.8-42
+library(arcgislayers)
+library(indicspecies)
+```
+
+```{r}
+source(here("R", "spatial_join.R"))
+```
+
+```{r}
+
+birds_indicator <- birds_joined %>%
+  st_drop_geometry() %>%
+  select(study_area,
+         observation_date,
+         habitat_type,
+         scientific_name,
+         observation_count) %>%
+  filter(!is.na(habitat_type), !is.na(observation_count)) %>%
+  group_by(study_area, observation_date, habitat_type, scientific_name) %>%
+  summarise(observation_count = sum(observation_count),
+            .groups = "drop") %>%
+  pivot_wider(names_from = scientific_name,
+              values_from = observation_count,
+              values_fill = 0)
+
+group_vector <- birds_indicator$habitat_type
+
+species_matrix <- birds_indicator %>%
+select(-study_area, -observation_date, -habitat_type) %>%
+  as.matrix()
+  
+birds_indicator %>% count(study_area) %>% filter(n > 1)
+
+indval <- multipatt(species_matrix,
+                    group_vector,
+                    duleg = TRUE,
+                    control = how(nperm = 999)) 
+```
+
+```{r}
+indicators <- indval$sign %>%
+  rownames_to_column("species") %>%
+  filter(p.value <= 0.05) %>%
+  pivot_longer(s.AGRICULTURE:s.WATER, names_to = "group", values_to = "member") %>%
+  filter(member == 1) %>% 
+  group_by(group) %>% 
+  slice_max(stat, n = 5)
+```
+
