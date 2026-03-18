@@ -149,19 +149,6 @@ $$
 # subset habitat
 habitat_df <- unique(placeholder_species_trends$habitat_type)
 
-# Loop through all 8 habitats and fit model 
-habitat_models <- lapply(habitat_df, function(i) {
-  # subset species 
-  species_subset <- filter(placeholder_species_trends, habitat_type == i)
-  # run model
-  glmmTMB(total_obs ~ gap_sts, 
-          family = nbinom2,
-          data = species_subset)
-})
-
-#Subset to specific habitat /index 
-summary(habitat_models)
-
 
 # Can add mixed effect for site --> (1|site)
 model_habitat <- glmmTMB(total_obs ~ habitat_type, 
