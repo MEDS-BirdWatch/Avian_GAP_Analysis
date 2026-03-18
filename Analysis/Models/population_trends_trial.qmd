@@ -3,10 +3,25 @@ title: "population_trends_trial"
 format: html
 ---
 ## Purpose
-This qmd is to document the trail for population trends. These trends will be assessed on placeholder species. 
-1. Determine placeholder species
-2. Find matched GAP-habitat status study areas with consistent yearly data 
-3. Run population trends 
+This qmd is to document the trail for population trends. These trends will be assessed on placeholder species. The goal is to find matched GAP-habitat status study areas with consistent yearly data.
+
+### Workflow 
+1. Find consistent time frames of observations for placeholder species. This will be change depending on our *focal species*.
+2. Determine placeholder species (randomly sample for now)
+3. Fit GLMM for each habitat separately (8 models).
+4. Fit GLMM for each GAP status (4 models)
+3. Export as {gt} summary table.
+4. Future steps:
+- apply workflow to actual focal species
+- Run ACF per site on residuals
+- Check Moran's I for spatial clustering
+- Address autocorrelation if found, then re-fit
+
+Things that may need adjusting/implementing:
+- family of model
+- specification of models 
+- site effects, other effects 
+
 ```{r}
 #| label: set-up
 # Load environment 
@@ -14,17 +29,20 @@ library(tidyverse)
 library(here)
 library(ggplot2)
 library(sf)
-library(MASS)
+library(glmmTMB)
+library(gtsummary)
 
 # Source spatial join
 source(here("R", "spatial_join.R"))
+
+# Source function
+source(here("R", "population_trend.R"))
 
 ```
 ### Approach 1: Consistent time frames 
 
 #### Determine consistent time frames - Testing
 In order to assess population trends, we need to find consistent time frames with observations for ALL species. 
-
 1. Diagnostic check - data across the years 
 ```{r}
 # Observations per year
@@ -62,7 +80,7 @@ study_area_obs <- birds_joined %>%
   arrange(year_collected) 
 
 ```
-3. Diagnostic  check - Sites above threshold
+3. Diagnostic check - Sites above threshold
 ```{r}
 
 year_coverage <- birds_joined %>%
@@ -88,30 +106,81 @@ In summary:
 
 - 1994:2006 and/or 1998-2005; 2019-2025
 
+## Negative binomial vs. Poisson
+```{r}
+
+```
+
+
 ### Placeholder species
 ```{r}
 set.seed(1)
 # Randomly select species 
-focal_species <- sample(unique(birds_joined$common_name),2)
+focal_species <- sample(unique(birds_joined$common_name),1)
 
+focal_species2 <- birds_joined %>% filter(common_name == "American Robin")
 
-# Source function
-source(here("R", "population_trend.R"))
-
-
-# Select placeholder years based on consistent data 
+# Select placeholder years based on consistent data -- this will change 
 years_list <- c(1998:2005)
 
-#Run function
-placeholder_species_trends <- population_trends(birds_joined, species_list = focal_species, years_list = years_list)
-
-# Model 
-
-species_trends <- glm.nb(total_obs ~ common_name + year_collected + gap_sts * habitat_type, 
-                            data = placeholder_species_trends)
-
-summary(species_trends)
+# Run function -- produces a subset of birds_joined with obs for focal species 
+placeholder_species_trends <- population_trends(birds_joined, species_list = focal_species2, years_list = years_list)
 
 ```
+## GLMM per habitat 
+Goal: what is the overall effect of habitat on our species? 
 
+Model statistical notation
+
+$$
+\begin{align}
+\text{observations} &\sim \text{habitat + (1|Site)}
+\end{align}
+$$ 
+$$
+\begin{align}
+\text{observations} &\sim \text{gap_sts + (1|Site) + GAP x habitat}
+\end{align}
+$$ 
+
+```{r}
+# .......Model 1: Habitat.....
+
+# subset habitat
+habitat_df <- unique(placeholder_species_trends$habitat_type)
+
+# Loop through all 8 habitats and fit model 
+habitat_models <- lapply(habitat_df, function(i) {
+  # subset species 
+  species_subset <- filter(placeholder_species_trends, habitat_type == i)
+  # run model
+  glmmTMB(total_obs ~ gap_sts, 
+          family = nbinom2,
+          data = species_subset)
+})
+
+#Subset to specific habitat /index 
+summary(habitat_models)
+
+
+# Can add mixed effect for site --> (1|site)
+model_habitat <- glmmTMB(total_obs ~ habitat_type, 
+        family = nbinom2,
+        data = placeholder_species_trends)
+
+summary(model_habitat)
+
+
+```
+## GLMM per GAP status
+```{r}
+# .......Model 2: GAP status.....
+
+# Can add mixed effect for site --> (1|site)
+model_gap <- glmmTMB(total_obs ~ gap_sts, 
+        family = nbinom2,
+        data = placeholder_species_trends)
+
+summary(model_gap)
+```
 
