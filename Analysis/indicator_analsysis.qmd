@@ -4,6 +4,7 @@ format: html
 ---
 
 ```{r}
+#| label: set-up
 library(tidyverse) # version 2.0.0
 library(sf) #1.0-21
 library(here) #1.0.1
@@ -13,6 +14,8 @@ library(terra) #1.8-42
 library(arcgislayers)
 library(indicspecies)
 library(readxl)
+
+
 ```
 
 ```{r}
@@ -76,7 +79,65 @@ pif_ca <- read_excel(here("data", "ACAD Regional 2024.06.03.xlsx")) %>%
 
 # Join 
 focal_species <- indicators %>%
-  semi_join(pif_ca, by = c("species" = "Scientific Name"))
+  semi_join(pif_ca, by = c("species" = "Scientific Name")) %>% 
+  mutate(group = str_remove(group, "s.")) 
+
+source(here("R/testing_species_obs.R"))
+
+focal_sp_obs <- list()
+
+for(i in unique(focal_species$group)){
+ sp_list <-  focal_species %>% 
+   filter(group== i) %>% 
+   select(common_name)
+ 
+ sp_obs_habitat <- birds_joined %>% 
+   st_drop_geometry() %>% 
+   filter(habitat_type == i) %>% 
+   filter(common_name %in% c(sp_list$common_name)) %>% 
+   group_by(common_name) %>%  
+   summarize(sum = sum(observation_count))
+
+left_join(focal_species, sp_obs_habitat)
+
+}
+
+sp_list <-  focal_species %>% 
+   filter(group == "AGRICULTURE") %>% 
+   select(common_name)
+
+sp_obs_habitat <- birds_joined %>% 
+   st_drop_geometry() %>% 
+   filter(habitat_type == "AGRICULTURE") %>% 
+   filter(common_name %in% c(sp_list$common_name)) %>% 
+   group_by(common_name) %>%  
+   summarize(sum = sum(observation_count))
+
+
+sp_obs_habitat(birds_joined, focal_species)
+
+# another way
+
+sp_obs_habitat <- birds_joined %>%
+  st_drop_geometry() %>%
+  inner_join(focal_species, by = c("common_name", "habitat_type" = "group")) %>%
+  group_by(common_name) %>%
+  summarize(sum_obs = sum(observation_count))
+
+focal_species <- left_join(focal_species, sp_obs_habitat, by = "common_name")
+
+# Clean up dataframe 
+
+focal_species <- focal_species %>% 
+  select(-c(index, stat, p.value, member)) 
+
+focal_species <- focal_species %>% 
+  select(-c(sum_obs.x, sum_obs.y)) %>% 
+  rename(sum_obs = sum)
+
+focal_species <- write_csv(focal_species, "focal_species_selection.csv")
+
+test <- read_csv(here("Analysis", "focal_species_selection.csv"))
 
 ```
 
