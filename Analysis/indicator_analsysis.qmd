@@ -1,5 +1,5 @@
 ---
-title: "indicator_analsysis"
+title: "Indicator Analysis "
 format: html
 ---
 
@@ -12,6 +12,7 @@ library(stars) #0.6-8
 library(terra) #1.8-42
 library(arcgislayers)
 library(indicspecies)
+library(readxl)
 ```
 
 ```{r}
@@ -69,12 +70,14 @@ indicators <- indval$sign %>%
 
 ```{r}
 # Load pif dataset 
+
 pif_ca <- read_excel(here("data", "ACAD Regional 2024.06.03.xlsx")) %>% 
-  filter(BCR == c(5, 9, 15, 32, 33))
+  filter(BCR %in% c(5, 9, 15, 32, 33))
 
 # Join 
 focal_species <- indicators %>%
   semi_join(pif_ca, by = c("species" = "Scientific Name"))
 
 ```
+
 
