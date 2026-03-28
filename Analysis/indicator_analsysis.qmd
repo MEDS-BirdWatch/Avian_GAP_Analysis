@@ -2,9 +2,18 @@
 title: "Indicator Analysis "
 format: html
 ---
+## Focal Species Selection
+This qmd is to select focal species per habitat for population trends. 
+
+### Workflow:
+1. Run {indicspecies} package on `birds_joined` dataset (area search, point counts).
+2. Join focal species with Partners in Flight.  
+3. Export as csv. 
 
 ```{r}
 #| label: set-up
+
+# Load relevant packages 
 library(tidyverse) # version 2.0.0
 library(sf) #1.0-21
 library(here) #1.0.1
@@ -15,17 +24,22 @@ library(arcgislayers)
 library(indicspecies)
 library(readxl)
 
-
-```
-
-```{r}
+# Source spatial join
 source(here("R", "spatial_join.R"))
+
+# Load Partners in Flight for California Bird Conservation Regions 
+pif_ca <- read_excel(here("data", "ACAD Regional 2024.06.03.xlsx")) %>% 
+  filter(BCR %in% c(5, 9, 15, 32, 33))
+
 ```
 
+## Indicspecies analysis 
 ```{r}
+#| label: dataframe-set-up 
 
+# Prepare dataframe for multipatt
 birds_indicator <- birds_joined %>%
-  st_drop_geometry() %>%
+  st_drop_geometry() %>% 
   select(study_area,
          observation_date,
          habitat_type,
@@ -40,30 +54,40 @@ birds_indicator <- birds_joined %>%
               values_from = observation_count,
               values_fill = 0)
 
+# Flag any study_area with only one sample 
+#birds_indicator %>% count(study_area) %>% filter(n > 1)
+
+# Prepare group labels (habitat type) as seperate vector 
 group_vector <- birds_indicator$habitat_type
 
+# Create numeric matrix
 species_matrix <- birds_indicator %>%
 select(-study_area, -observation_date, -habitat_type) %>%
   as.matrix()
-  
-birds_indicator %>% count(study_area) %>% filter(n > 1)
 
+```
+
+```{r}
+#| label: run-multipatt 
+# Run multipatt for indicator values 
 indval <- multipatt(species_matrix,
                     group_vector,
-                    duleg = TRUE,
+                    duleg = TRUE, # Use specificity not fidelity
                     control = how(nperm = 999)) 
 
+```
+
+```{r}
+#| label: extract-indicators
 # Add common names back - prevents duplicate NAs 
 common_names <- birds_joined %>%
   st_drop_geometry() %>%
   distinct(scientific_name, common_name)
-```
 
-```{r}
+# Create indicators dataframe 
 indicators <- indval$sign %>%
   rownames_to_column("species") %>%
   filter(p.value <= 0.05) %>%
-  # Add common names
   left_join(common_names, by = c("species" = "scientific_name")) %>%
   pivot_longer(s.AGRICULTURE:s.WATER, names_to = "group", values_to = "member") %>%
   filter(member == 1) %>% 
@@ -72,52 +96,14 @@ indicators <- indval$sign %>%
 ```
 
 ```{r}
-# Load pif dataset 
+#| label: join-pif 
 
-pif_ca <- read_excel(here("data", "ACAD Regional 2024.06.03.xlsx")) %>% 
-  filter(BCR %in% c(5, 9, 15, 32, 33))
-
-# Join 
+# Join indicators df with pif 
 focal_species <- indicators %>%
   semi_join(pif_ca, by = c("species" = "Scientific Name")) %>% 
   mutate(group = str_remove(group, "s.")) 
 
-source(here("R/testing_species_obs.R"))
-
-focal_sp_obs <- list()
-
-for(i in unique(focal_species$group)){
- sp_list <-  focal_species %>% 
-   filter(group== i) %>% 
-   select(common_name)
- 
- sp_obs_habitat <- birds_joined %>% 
-   st_drop_geometry() %>% 
-   filter(habitat_type == i) %>% 
-   filter(common_name %in% c(sp_list$common_name)) %>% 
-   group_by(common_name) %>%  
-   summarize(sum = sum(observation_count))
-
-left_join(focal_species, sp_obs_habitat)
-
-}
-
-sp_list <-  focal_species %>% 
-   filter(group == "AGRICULTURE") %>% 
-   select(common_name)
-
-sp_obs_habitat <- birds_joined %>% 
-   st_drop_geometry() %>% 
-   filter(habitat_type == "AGRICULTURE") %>% 
-   filter(common_name %in% c(sp_list$common_name)) %>% 
-   group_by(common_name) %>%  
-   summarize(sum = sum(observation_count))
-
-
-sp_obs_habitat(birds_joined, focal_species)
-
-# another way
-
+# Add observation count to focal species 
 sp_obs_habitat <- birds_joined %>%
   st_drop_geometry() %>%
   inner_join(focal_species, by = c("common_name", "habitat_type" = "group")) %>%
@@ -129,12 +115,10 @@ focal_species <- left_join(focal_species, sp_obs_habitat, by = "common_name")
 # Clean up dataframe 
 
 focal_species <- focal_species %>% 
-  select(-c(index, stat, p.value, member)) 
+  select(-c(index, stat, p.value, member)) %>% 
+  rename(habitat_type = group)
 
-focal_species <- focal_species %>% 
-  select(-c(sum_obs.x, sum_obs.y)) %>% 
-  rename(sum_obs = sum)
-
+# Write csv 
 focal_species <- write_csv(focal_species, "focal_species_selection.csv")
 
 test <- read_csv(here("Analysis", "focal_species_selection.csv"))
