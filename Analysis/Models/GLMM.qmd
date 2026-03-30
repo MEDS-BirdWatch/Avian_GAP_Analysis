@@ -11,65 +11,205 @@ library(stars) #0.6-8
 library(terra) #1.8-42
 library(glmmTMB) #1.1.14
 library(arcgislayers)
+library(gtsummary)
+library(gtExtras)
 
 source(here("R", "spatial_join.R"))
 source(here('R', 'rich_gini.R'))
 ```
 
+1. Aggregated biodiversity by Area Search
 ```{r}
 
-birds_rich <- gini_simpson(birds_joined)
-
-birds_rich <- birds_rich %>% 
+# Obtain aggregated biodiversity data for Area Search
+biodiv_area_search_agg <- birds_joined %>% 
+  # Filter for only Area Search data
+  filter(survey_type %in% "Area Search") %>% 
+  # Run Gini Simpson function to obtain biodiversity values
+  gini_simpson() %>% 
+  # Add a column aggregating GAP Status by protection type
   mutate(protection = ifelse(gap_sts %in% c(1,2), 'Protected', 'Non-protected'))
 
-habitats <- unique(birds_rich$habitat_type)
-tmp <- vector(mode = 'list', length = 0)
-bird_summary <- vector(mode = 'list', length = 0)
+# Pull out unique habitat types
+habitats <- unique(biodiv_area_search_agg$habitat_type)
 
+# Initialize list for each filtered habitat type
+tmp <- vector(mode = 'list', length = 0)
+
+# Initialize list for summary object of each model
+area_agg <- vector(mode = 'list', length = 0)
+
+# Run GLMM over each habitat type and fill in summary object
 for (i in habitats){
   
-  tmp[[i]] <- birds_rich %>% 
+  tmp[[i]] <- biodiv_area_search_agg %>% 
     st_drop_geometry() %>% 
     filter(habitat_type == i)
   
   
-  bird_summary[[i]] <- summary(glmmTMB(rich_gini ~ protection, family = beta_family(), data = tmp[[i]]))
+ area_agg[[i]] <- glmmTMB(rich_gini ~ protection, family = beta_family(), data = tmp[[i]])
 }
-
 
 ```
 
-
-
-
+2. Aggregated biodiversity by Point Count
 ```{r}
+biodiv_point_count_agg <- birds_joined %>% 
+  filter(survey_type %in% "Point Count") %>% 
+  gini_simpson() %>% 
+  mutate(protection = ifelse(gap_sts %in% c(1,2), 'Protected', 'Non-protected'))
+
+habitats <- unique(biodiv_point_count_agg$habitat_type)
 tmp <- vector(mode = 'list', length = 0)
-bird_summary <- vector(mode = 'list', length = 0)
+point_agg <- vector(mode = 'list', length = 0)
 
 for (i in habitats){
   
-  tmp[[i]] <- birds_rich %>% 
+  tmp[[i]] <- biodiv_point_count_agg %>% 
     st_drop_geometry() %>% 
     filter(habitat_type == i)
   
   
-  bird_summary[[i]] <- glmmTMB(rich_gini ~ gap_sts, family = beta_family(), data = tmp[[i]])
+  point_agg[[i]] <- glmmTMB(rich_gini ~ protection, family = beta_family(), data = tmp[[i]])
 }
 
-table_list <- lapply(bird_summary, tbl_regression, exponentiate = TRUE)
+```
 
-# 3. Merge the tables together
-final_table <- tbl_merge(
-  tbls = table_list,
-  tab_spanner = c(habitats)
+3. Non-aggregated biodiversity by Area Search
+
+```{r}
+biodiv_area_search_disag <- birds_joined %>% 
+  filter(survey_type %in% "Area Search") %>% 
+  gini_simpson()
+
+habitats <- unique(biodiv_area_search_disag$habitat_type)
+tmp <- vector(mode = 'list', length = 0)
+area_disag <- vector(mode = 'list', length = 0)
+
+for (i in habitats){
+  
+  tmp[[i]] <- biodiv_area_search_disag %>% 
+    st_drop_geometry() %>% 
+    filter(habitat_type == i)
+  
+  
+  area_disag[[i]] <- glmmTMB(rich_gini ~ gap_sts, family = beta_family(), data = tmp[[i]])
+}
+```
+
+4. Non-aggregated biodiversity by Point Count
+```{r}
+biodiv_point_count_disag <- birds_joined %>% 
+  filter(survey_type %in% "Point Count") %>% 
+  gini_simpson()
+
+habitats <- unique(biodiv_point_count_disag$habitat_type)
+tmp <- vector(mode = 'list', length = 0)
+point_disag <- vector(mode = 'list', length = 0)
+
+for (i in habitats){
+  
+  tmp[[i]] <-biodiv_point_count_disag %>% 
+    st_drop_geometry() %>% 
+    filter(habitat_type == i)
+  
+  
+  point_disag[[i]] <- glmmTMB(rich_gini ~ gap_sts, family = beta_family(), data = tmp[[i]])
+}
+```
+# Create model summary of aggregated biodiversity across point and area search
+```{r}
+# Extract gtsummary objects from model outputs
+# Area Search aggregated model output
+area_agg_summary <- map(area_agg, ~tbl_regression(.x))
+# Point Count aggregated model output
+point_agg_summary <- map(point_agg, ~tbl_regression(.x))
+
+# Create summary table output
+aggregated_model_table <- tbl_merge(
+  tbls = c(area_agg_summary, point_agg_summary), 
+  # by = habitat_type,
+  # include = c(Beta, p-value, site, year), 
+  # tab_header = c('Area Search', 'Point Count'),
+  # tab_spanner = c(names(area_agg), names(point_agg))
 )
 
-# 4. Convert to gt object for further customization
-final_gt <- final_table %>%
-  as_gt() 
+# Show example table
+aggregated_model_table
 
-# Display table
-final_gt
+
+
+# USE: gt_summary::tbl_summary()
+spiny_summary <- spiny_counts %>%
+  gtsummary::tbl_summary(
+    # Select how you want to group columns
+    by = treat,
+    # Variables to include
+    include = c(counts, mean_size, site, year), 
+    missing = "no", # don't list missing data separately
+    # Display mean and standard deviation for all continuous variables
+    statistic = list(all_continuous() ~ "{mean} ({sd})"),
+     label = list(
+      counts    ~ "Counts",
+      mean_size ~ "Mean Size",
+      site      ~ "Site",
+      year      ~ "Year"
+    )
+  ) %>% 
+    # Bold labels
+    bold_labels() %>% 
+  # Add p value
+  add_p()
+
+
+spiny_summary %>% 
+  as_gt() %>%
+  
+  # Add a Title and Subtitle
+  tab_header(
+    title = "Spiny Lobsters in MPA vs Non-Mpa"
+  ) %>%
+    
+    # Style the header
+    tab_style( 
+    style = list(
+      cell_fill(color = "#A0185A"),
+      cell_text(color = "white")),
+      locations = cells_title()) %>% 
+    
+    # Style the column labels
+    tab_style( 
+    style = list(
+      cell_fill(color = "#A0185A"),
+      cell_text(color = "white")),
+      locations = cells_column_labels(everything())) %>%
+    
+    # Style the cells body 
+    tab_style( 
+    style = cell_fill(color = "#FFC4EB"),
+        locations = cells_body()) %>%
+    
+    # Style the footnote 
+    tab_style( 
+    style = list(cell_fill(color = "#FFC4EB"),
+            cell_text(weight = "bold")), # Weight the footnote bold so it pops
+            locations = cells_footnotes()) %>%
+    
+  # Change column label
+  cols_label( 
+    label = "Total Lobster",
+    p.value = "P-Value" 
+  ) %>%
+  
+  # Add a source note at the bottom
+  tab_source_note(
+    source_note = "Note: Data from Reed D. 2019."
+  ) %>% 
+    # Style the header
+    tab_style( 
+    style = list(
+      cell_fill(color = "#A0185A"),
+      cell_text(color = "white")),
+      locations = cells_source_notes())
 ```
 

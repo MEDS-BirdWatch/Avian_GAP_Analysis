@@ -39,6 +39,7 @@ source(here("R", "spatial_join.R"))
 source(here("R", "population_trend.R"))
 
 ```
+
 ### Approach 1: Consistent time frames 
 
 #### Determine consistent time frames - Testing
