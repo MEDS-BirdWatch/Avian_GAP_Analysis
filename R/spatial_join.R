@@ -69,7 +69,7 @@ habitat_poly <- as.polygons(habitat_simple) %>%
 
 #-------------------------------California Shape-------------------------------
 
-# CA shape for calculating gap status 5 (no gap) area
+# CA shape for calculating gap status 5 (no gap) area 
 ca <- states(cb = TRUE) %>% 
   filter(STUSPS == "CA") %>% 
   st_transform(crs(habitat_type))
@@ -111,9 +111,13 @@ gap_clean <- bind_rows(gap_clean, gap_5)
 
 #------------------------------AKN data-----------------------------------------
 point_count <- read_csv(here::here('data', 'point_count.csv')) %>% 
-  clean_names()
+  clean_names() %>% 
+  mutate(survey_type = 'Point Count')
+
 area_search <- read_csv(here::here('data', 'area_search.csv')) %>% 
-  clean_names()
+  clean_names() %>% 
+  mutate(survey_type = 'Area Search')
+
 point_area_geo <- full_join(area_search, point_count) %>% 
   st_as_sf(coords = c("decimal_longitude", "decimal_latitude"), crs = 4326) %>% 
   st_transform(st_crs(habitat_type))
