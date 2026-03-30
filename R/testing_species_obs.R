@@ -7,7 +7,8 @@ for(i in unique(data2$group)){
    select(common_name)
  
  sp_obs_habitat <- data1 %>% 
-   filter(habitat_type == habitat_type) %>% 
+   st_drop_geometry() %>% 
+   filter(habitat_type == i) %>% 
    filter(common_name %in% c(sp_list)) %>% 
    group_by(common_name) %>%  
    summarize(sum = sum(observation_count))
