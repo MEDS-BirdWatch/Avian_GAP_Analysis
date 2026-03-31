@@ -3,7 +3,7 @@ focal_sp_obs <- list()
 
 for(i in unique(data2$group)){
  sp_list <-  data2 %>% 
-   filter(habitat_type == i) %>% 
+   filter(group == i) %>% 
    select(common_name)
  
  sp_obs_habitat <- data1 %>% 

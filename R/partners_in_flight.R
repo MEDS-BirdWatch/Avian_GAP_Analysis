@@ -4,7 +4,9 @@ library(here)
 library(readxl)
 
 # Import PIF
-pif <- read_excel(here("data", "ACAD Regional 2024.06.03.xlsx"))
+pif <- read_excel(here("data", "ACAD Regional 2024.06.03.xlsx")) %>% 
+  clean_names() %>% 
+  filter(BCR == c(5, 9, 15, 32, 33))
 
 # Filter to California codes (5, 9, 15, 32, 33)
 # BCR = Bird conservation regions

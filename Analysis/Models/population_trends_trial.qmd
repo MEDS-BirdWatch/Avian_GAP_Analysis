@@ -39,7 +39,7 @@ source(here("R", "spatial_join.R"))
 source(here("R", "population_trend.R"))
 
 ```
-### Approach 1: Consistent time frames 
+### Consistent time frames 
 
 #### Determine consistent time frames - Testing
 In order to assess population trends, we need to find consistent time frames with observations for ALL species. 
@@ -60,24 +60,6 @@ total_obs <- birds_joined %>%
   ggplot(aes(x = year_collected, y = total_obs)) +
   geom_line() +
   theme_classic()
-
-```
-
-2. Diagnostic check - data across certain sites 
-Our data has 723 unique study areas. 
-```{r}
-study_area_obs <- birds_joined %>%
-  group_by(year_collected) %>%
-  st_drop_geometry() %>% 
-  # Sum observations 
-  summarise(
-    total_obs = sum(observation_count, na.rm = TRUE),
-    # sum distinct number of sites 
-    n_sites = n_distinct(study_area)
-  ) %>% 
-  # Obs per site 
-  mutate(obs_per_site = total_obs / n_sites) %>%
-  arrange(year_collected) 
 
 ```
 3. Diagnostic check - Sites above threshold
@@ -106,11 +88,6 @@ In summary:
 
 - 1994:2006 and/or 1998-2005; 2019-2025
 
-## Negative binomial vs. Poisson
-```{r}
-
-```
-
 
 ### Placeholder species
 ```{r}
@@ -118,56 +95,77 @@ set.seed(1)
 # Randomly select species 
 focal_species <- sample(unique(birds_joined$common_name),1)
 
-focal_species2 <- birds_joined %>% filter(common_name == "American Robin")
-
 # Select placeholder years based on consistent data -- this will change 
 years_list <- c(1998:2005)
 
 # Run function -- produces a subset of birds_joined with obs for focal species 
-placeholder_species_trends <- population_trends(birds_joined, species_list = focal_species2, years_list = years_list)
+placeholder_species_trends <- population_trends(birds_joined, species_list = focal_species, years_list = years_list)
 
 ```
-## GLMM per habitat 
-Goal: what is the overall effect of habitat on our species? 
 
-Model statistical notation
-
-$$
-\begin{align}
-\text{observations} &\sim \text{habitat + (1|Site)}
-\end{align}
-$$ 
-$$
-\begin{align}
-\text{observations} &\sim \text{gap_sts + (1|Site) + GAP x habitat}
-\end{align}
-$$ 
 
 ```{r}
-# .......Model 1: Habitat.....
+# Make vector of focal species 
+focal_species <- c(
+  "SHRUB" = "Wrentit",
+  "HERBACEOUS" = "Western Meadowlark",
+  "HARDWOOD" = "Song Sparrow",
+  "WATER" = "Western Sandpiper",
+  "URBAN" = "White-crowned Sparrow",
+  "CONIFER" = "Red-breasted Nuthatch",
+  "AGRICULTURE" = "Red-winged Blackbird"
+)
 
-# subset habitat
-habitat_df <- unique(placeholder_species_trends$habitat_type)
+# As a dataframe 
+focal_species <- data.frame(
+  habitat_type = c("SHRUB", "HERBACEOUS", "HARDWOOD", "WATER", "URBAN", "CONIFER", "AGRICULTURE"),
+  common_name = c("Wrentit", "Western Meadowlark", "Song Sparrow", "Western Sandpiper", 
+                  "White-crowned Sparrow", "Red-breasted Nuthatch", "Red-winged Blackbird")
+)
+
+# Test workflow with one species -- no filtering of years
+
+wren_trends <- birds_joined %>% 
+  st_drop_geometry() %>% 
+  filter(common_name == "Wrentit") %>% 
+  filter(habitat_type == "SHRUB") %>% 
+  group_by(common_name, year_collected, gap_sts, study_area) %>%
+  summarise(total_obs = sum(observation_count, na.rm = TRUE)) %>% 
+  ungroup() %>% 
+  select(common_name, year_collected, gap_sts, habitat_type, total_obs)
 
 
-# Can add mixed effect for site --> (1|site)
-model_habitat <- glmmTMB(total_obs ~ habitat_type, 
-        family = nbinom2,
-        data = placeholder_species_trends)
-
-summary(model_habitat)
+wren_model <- glmmTMB(total_obs ~ year_collected + gap_sts,
+                         family = nbinom2,
+                         data = wren_trends)
+summary(wren_model)
 
 
-```
-## GLMM per GAP status
-```{r}
-# .......Model 2: GAP status.....
+# Function reads the vector 
+# Assess pop trends for ALL observation years, plan to filter to study areas with sufficient data 
+population_trends<- function(data, species_list) {
+  data %>%
+    st_drop_geometry() %>%
+    filter(common_name %in% species_list$common_name,
+           habitat_type %in% species_list$habitat) %>%
+    group_by(common_name, year_collected, gap_sts, study_area) %>%
+    summarise(total_obs = sum(observation_count, na.rm = TRUE), .groups = "drop")
+}
 
-# Can add mixed effect for site --> (1|site)
-model_gap <- glmmTMB(total_obs ~ gap_sts, 
-        family = nbinom2,
-        data = placeholder_species_trends)
+focal_species_data <- population_trends(birds_joined, focal_species)
 
-summary(model_gap)
+
+for (i in focal_species_data) {
+    focal_species <- focal_species_data %>% filter(common_name == i)
+    
+    models <- glmmTMB(total_obs ~ year_collected + gap_sts,
+                   family = nbinom2, data = focal_species) }
+
+species_model <- glmmTMB(total_obs ~ year + gap_sts,
+                         family = nbinom2,
+                         data = focal_species_data)
+
+# (year|study_area) capture study-are level differences
+
 ```
 
