@@ -103,7 +103,7 @@ placeholder_species_trends <- population_trends(birds_joined, species_list = foc
 
 ```
 
-
+## Focal species models
 ```{r}
 # Make vector of focal species 
 focal_species <- c(
@@ -127,15 +127,15 @@ focal_species <- data.frame(
 
 wren_trends <- birds_joined %>% 
   st_drop_geometry() %>% 
-  filter(common_name == "Wrentit") %>% 
-  filter(habitat_type == "SHRUB") %>% 
-  group_by(common_name, year_collected, gap_sts, study_area) %>%
+  mutate(protection_sts = if_else(gap_sts %in% c("1", "2"), "protected", "unprotected")) %>% 
+  filter(common_name == "Wrentit", habitat_type == "SHRUB") %>% 
+  group_by(common_name, year_collected, protection_sts, study_area) %>%
   summarise(total_obs = sum(observation_count, na.rm = TRUE)) %>% 
-  ungroup() %>% 
-  select(common_name, year_collected, gap_sts, habitat_type, total_obs)
+  ungroup() 
 
-
-wren_model <- glmmTMB(total_obs ~ year_collected + gap_sts,
+# Add site effects for study area for non-independence
+# habitat is inplicit within this model structure 
+wren_model <- glmmTMB(total_obs ~ year_collected * protection_sts,
                          family = nbinom2,
                          data = wren_trends)
 summary(wren_model)
@@ -143,29 +143,39 @@ summary(wren_model)
 
 # Function reads the vector 
 # Assess pop trends for ALL observation years, plan to filter to study areas with sufficient data 
-population_trends<- function(data, species_list) {
+population_trends <- function(data, species_list) {
   data %>%
     st_drop_geometry() %>%
     filter(common_name %in% species_list$common_name,
            habitat_type %in% species_list$habitat) %>%
-    group_by(common_name, year_collected, gap_sts, study_area) %>%
-    summarise(total_obs = sum(observation_count, na.rm = TRUE), .groups = "drop")
+    mutate(protection_sts = if_else(gap_sts %in% c("1", "2"), "protected", "unprotected")) %>% 
+    group_by(common_name, year_collected, protection_sts, study_area) %>%
+    summarise(total_obs = sum(observation_count, na.rm = TRUE)) %>% 
+    ungroup() %>% 
+    dplyr::select(common_name, year_collected,total_obs,protection_sts, study_area)
 }
 
-focal_species_data <- population_trends(birds_joined, focal_species)
+# Apply function to data
+focal_species_data <- population_trends(data = birds_joined, species_list = focal_species)
 
+# Store  results
+results <- list()
 
-for (i in focal_species_data) {
-    focal_species <- focal_species_data %>% filter(common_name == i)
-    
-    models <- glmmTMB(total_obs ~ year_collected + gap_sts,
-                   family = nbinom2, data = focal_species) }
+# Loop through all species and run models
+for (i in unique(focal_species_data$common_name)) {
+  species_df <- focal_species_data %>% filter(common_name == i)
+  
+  species_model <- glmmTMB(total_obs ~ year_collected * protection_sts,
+                            family = nbinom2,
+                            data = species_df)
+  
+  results[[i]] <- species_model
+}
 
-species_model <- glmmTMB(total_obs ~ year + gap_sts,
-                         family = nbinom2,
-                         data = focal_species_data)
+# Access models 
+# Wrentit/Shrub -- confirm if it works 
+summary(results[["Wrentit"]]) # not the same summary 4/1/26 
 
-# (year|study_area) capture study-are level differences
 
 ```
 
