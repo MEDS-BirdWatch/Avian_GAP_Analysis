@@ -14,7 +14,7 @@ library(arcgislayers)
 library(gtsummary)
 library(gtExtras)
 
-source(here("R", "spatial_join.R")
+source(here("R", "spatial_join.R"))
 source(here('R', 'rich_gini.R'))
 
 ```

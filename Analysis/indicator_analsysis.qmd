@@ -2,13 +2,9 @@
 title: "Indicator Analysis "
 format: html
 ---
-<<<<<<< HEAD
-<<<<<<< HEAD
 
-```{r}
-=======
 ## Focal Species Selection
-This qmd is to select focal species per habitat for population trends. 
+#This qmd is to select focal species per habitat for population trends. 
 
 ### Workflow:
 1. Run {indicspecies} package on `birds_joined` dataset (area search, point counts).
@@ -19,21 +15,6 @@ This qmd is to select focal species per habitat for population trends.
 #| label: set-up
 
 # Load relevant packages 
->>>>>>> 5dfe080fc8e3976517b0f45ee1fc58bb32d0e2e1
-=======
-## Focal Species Selection
-This qmd is to select focal species per habitat for population trends. 
-
-### Workflow:
-1. Run {indicspecies} package on `birds_joined` dataset (area search, point counts).
-2. Join focal species with Partners in Flight.  
-3. Export as csv. 
-
-```{r}
-#| label: set-up
-
-# Load relevant packages 
->>>>>>> Nathalie
 library(tidyverse) # version 2.0.0
 library(sf) #1.0-21
 library(here) #1.0.1
@@ -43,11 +24,6 @@ library(terra) #1.8-42
 library(arcgislayers)
 library(indicspecies)
 library(readxl)
-<<<<<<< HEAD
-<<<<<<< HEAD
-```
-=======
->>>>>>> Nathalie
 
 # Source spatial join
 source(here("R", "spatial_join.R"))
@@ -55,27 +31,8 @@ source(here("R", "spatial_join.R"))
 # Load Partners in Flight for California Bird Conservation Regions 
 pif_ca <- read_excel(here("data", "ACAD Regional 2024.06.03.xlsx")) %>% 
   filter(BCR %in% c(5, 9, 15, 32, 33))
-
 ```
 
-## Indicspecies analysis 
-```{r}
-#| label: dataframe-set-up 
-
-# Prepare dataframe for multipatt
-birds_indicator <- birds_joined %>%
-<<<<<<< HEAD
-  st_drop_geometry() %>%
-=======
-
-# Source spatial join
-source(here("R", "spatial_join.R"))
-
-# Load Partners in Flight for California Bird Conservation Regions 
-pif_ca <- read_excel(here("data", "ACAD Regional 2024.06.03.xlsx")) %>% 
-  filter(BCR %in% c(5, 9, 15, 32, 33))
-
-```
 
 ## Indicspecies analysis 
 ```{r}
@@ -84,10 +41,6 @@ pif_ca <- read_excel(here("data", "ACAD Regional 2024.06.03.xlsx")) %>%
 # Prepare dataframe for multipatt
 birds_indicator <- birds_joined %>%
   st_drop_geometry() %>% 
->>>>>>> 5dfe080fc8e3976517b0f45ee1fc58bb32d0e2e1
-=======
-  st_drop_geometry() %>% 
->>>>>>> Nathalie
   select(study_area,
          observation_date,
          habitat_type,
@@ -102,14 +55,11 @@ birds_indicator <- birds_joined %>%
               values_from = observation_count,
               values_fill = 0)
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
 # Flag any study_area with only one sample 
 #birds_indicator %>% count(study_area) %>% filter(n > 1)
 
-# Prepare group labels (habitat type) as seperate vector 
->>>>>>> Nathalie
+# Prepare group labels (habitat type) as separate vector 
+
 group_vector <- birds_indicator$habitat_type
 
 # Create numeric matrix
@@ -126,65 +76,20 @@ indval <- multipatt(species_matrix,
                     group_vector,
                     duleg = TRUE, # Use specificity not fidelity
                     control = how(nperm = 999)) 
-
-<<<<<<< HEAD
-=======
-# Flag any study_area with only one sample 
-#birds_indicator %>% count(study_area) %>% filter(n > 1)
-
-# Prepare group labels (habitat type) as seperate vector 
-group_vector <- birds_indicator$habitat_type
-
-# Create numeric matrix
-species_matrix <- birds_indicator %>%
-select(-study_area, -observation_date, -habitat_type) %>%
-  as.matrix()
-
-```
-
-```{r}
-#| label: run-multipatt 
-# Run multipatt for indicator values 
-indval <- multipatt(species_matrix,
-                    group_vector,
-                    duleg = TRUE, # Use specificity not fidelity
-                    control = how(nperm = 999)) 
-
-=======
->>>>>>> Nathalie
 ```
 
 ```{r}
 #| label: extract-indicators
-<<<<<<< HEAD
->>>>>>> 5dfe080fc8e3976517b0f45ee1fc58bb32d0e2e1
-=======
->>>>>>> Nathalie
 # Add common names back - prevents duplicate NAs 
 common_names <- birds_joined %>%
   st_drop_geometry() %>%
   distinct(scientific_name, common_name)
-<<<<<<< HEAD
-<<<<<<< HEAD
-```
-=======
->>>>>>> Nathalie
 
 # Create indicators dataframe 
 indicators <- indval$sign %>%
   rownames_to_column("species") %>%
   filter(p.value <= 0.05) %>%
-<<<<<<< HEAD
-  # Add common names
-=======
 
-# Create indicators dataframe 
-indicators <- indval$sign %>%
-  rownames_to_column("species") %>%
-  filter(p.value <= 0.05) %>%
->>>>>>> 5dfe080fc8e3976517b0f45ee1fc58bb32d0e2e1
-=======
->>>>>>> Nathalie
   left_join(common_names, by = c("species" = "scientific_name")) %>%
   pivot_longer(s.AGRICULTURE:s.WATER, names_to = "group", values_to = "member") %>%
   filter(member == 1) %>% 
@@ -193,24 +98,10 @@ indicators <- indval$sign %>%
 ```
 
 ```{r}
-<<<<<<< HEAD
-<<<<<<< HEAD
-# Load pif dataset 
-=======
-#| label: join-pif 
->>>>>>> Nathalie
-
-# Join indicators df with pif 
-focal_species <- indicators %>%
-<<<<<<< HEAD
-  semi_join(pif_ca, by = c("species" = "Scientific Name"))
-=======
 #| label: join-pif 
 
 # Join indicators df with pif 
 focal_species <- indicators %>%
-=======
->>>>>>> Nathalie
   semi_join(pif_ca, by = c("species" = "Scientific Name")) %>% 
   mutate(group = str_remove(group, "s.")) 
 
@@ -233,10 +124,6 @@ focal_species <- focal_species %>%
 focal_species <- write_csv(focal_species, "focal_species_selection.csv")
 
 test <- read_csv(here("Analysis", "focal_species_selection.csv"))
-<<<<<<< HEAD
->>>>>>> 5dfe080fc8e3976517b0f45ee1fc58bb32d0e2e1
-=======
->>>>>>> Nathalie
 
 ```
 

@@ -69,15 +69,7 @@ habitat_poly <- as.polygons(habitat_simple) %>%
 
 #-------------------------------California Shape-------------------------------
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-# CA shape for calculating gap status 5 (no gap) area
-=======
 # CA shape for calculating gap status 5 (no gap) area 
->>>>>>> 5dfe080fc8e3976517b0f45ee1fc58bb32d0e2e1
-=======
-# CA shape for calculating gap status 5 (no gap) area 
->>>>>>> Nathalie
 ca <- states(cb = TRUE) %>% 
   filter(STUSPS == "CA") %>% 
   st_transform(crs(habitat_type))
@@ -119,12 +111,6 @@ gap_clean <- bind_rows(gap_clean, gap_5)
 
 #------------------------------AKN data-----------------------------------------
 point_count <- read_csv(here::here('data', 'point_count.csv')) %>% 
-<<<<<<< HEAD
-<<<<<<< HEAD
-  clean_names()
-area_search <- read_csv(here::here('data', 'area_search.csv')) %>% 
-  clean_names()
-=======
   clean_names() %>% 
   mutate(survey_type = 'Point Count')
 
@@ -132,16 +118,6 @@ area_search <- read_csv(here::here('data', 'area_search.csv')) %>%
   clean_names() %>% 
   mutate(survey_type = 'Area Search')
 
->>>>>>> 5dfe080fc8e3976517b0f45ee1fc58bb32d0e2e1
-=======
-  clean_names() %>% 
-  mutate(survey_type = 'Point Count')
-
-area_search <- read_csv(here::here('data', 'area_search.csv')) %>% 
-  clean_names() %>% 
-  mutate(survey_type = 'Area Search')
-
->>>>>>> Nathalie
 point_area_geo <- full_join(area_search, point_count) %>% 
   st_as_sf(coords = c("decimal_longitude", "decimal_latitude"), crs = 4326) %>% 
   st_transform(st_crs(habitat_type))
