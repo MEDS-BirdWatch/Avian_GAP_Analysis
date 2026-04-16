@@ -23,7 +23,7 @@
           .groups = 'drop'
         )
       
-      left_join(data, index)
+      suppressMessages(left_join(data, index))
     }
 
 
