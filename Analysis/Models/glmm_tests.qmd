@@ -1,0 +1,291 @@
+---
+title: "GLMM_testing"
+format: html
+cache: TRUE
+warning: FALSE
+---
+
+```{r}
+library(sf) #1.0-21
+library(here) #1.0.1
+library(janitor) #2.2.1
+library(stars) #0.6-8
+library(terra) #1.8-42
+library(glmmTMB) #1.1.14
+library(arcgislayers)
+library(gtsummary)
+library(gtExtras)
+library(lmtest)
+library(spdep)
+library(kableExtra)
+
+source(here('R', 'autocorrelation_tests.R'))
+source(here('R','fit_agg.R'))
+source(here('R','fit_disagg.R'))
+source(here('R','adj_fit_agg.R'))
+source(here('R', 'adj_fit_disagg.R'))
+source(here("R", "spatial_join.R"))
+source(here('R', 'rich_gini.R'))
+set.seed(76)
+sample = .8
+
+habitats <- unique(birds_joined$habitat_type)
+```
+
+
+base 
+
+```{r}
+biodiv_area_search_agg <- birds_joined %>% 
+    filter(survey_type %in% "Area Search")  %>% 
+    gini_simpson()%>% 
+    mutate(protection = ifelse(gap_sts %in% c(1,2), 
+                               'Protected', 'Non-protected')) %>% 
+    arrange(desc(observation_date))
+  
+  area_agg <- fit_agg(biodiv_area_search_agg, sample)
+  
+  biodiv_point_count_agg <- birds_joined %>% 
+    filter(survey_type %in% "Point Count") %>% 
+    gini_simpson() %>%
+    mutate(protection = ifelse(gap_sts %in% c(1,2), 
+                               'Protected', 'Non-protected'))%>% 
+    arrange(desc(observation_date))
+  
+  point_agg <- fit_agg(biodiv_point_count_agg, sample)
+  
+  biodiv_area_search_disag <- birds_joined %>% 
+    mutate(gap_sts = as.numeric(gap_sts)) %>% 
+    filter(survey_type %in% "Area Search") %>% 
+    gini_simpson() %>% 
+    arrange(desc(observation_date))
+  
+  area_disag <- fit_disagg(biodiv_area_search_disag, sample) 
+  
+  biodiv_point_count_disag <- birds_joined %>% 
+    mutate(gap_sts = as.numeric(gap_sts)) %>% 
+    filter(survey_type %in% "Point Count") %>% 
+    gini_simpson() %>% 
+    arrange(desc(observation_date))
+  
+ point_disag <- fit_disagg(biodiv_point_count_disag, sample)
+  
+  
+  birds_rich <- birds_joined %>%  
+    gini_simpson() %>% 
+    mutate(protection = ifelse(gap_sts %in% c(1,2), 
+                               'Protected', 'Non-protected'))%>% 
+    arrange(desc(observation_date))
+  
+  bird_summary <- fit_agg(birds_rich, sample)
+  
+
+models <- list(
+  point_disag  = point_disag,
+  area_disag   = area_disag,
+  point_agg    = point_agg,
+  area_agg     = area_agg,
+  bird_summary = bird_summary
+)
+
+spatial_temporal_tests <- list()
+
+model_data_map <- list(
+  point_disag  = biodiv_point_count_disag,
+  area_disag   = biodiv_area_search_disag,
+  point_agg    = biodiv_point_count_agg,
+  area_agg     = biodiv_area_search_agg,
+  bird_summary = birds_rich
+)
+
+
+spatial_temporal_tests <- run_spatial_temporal_tests(
+  models         = models,
+  model_data_map = model_data_map,
+  habitats       = habitats
+)
+
+print(spatial_temporal_tests, n = 38)
+```
+
+Make into a Kable table for TM
+```{r}
+disag_table <- spatial_temporal_tests %>% 
+  filter(grepl("_disag", model_name)) %>% 
+  rename('Model Name' = model_name, 'Habitat' = habitat, 
+         'Durbin Watson' = dw, "Moran's I Statistic" = moran_I,
+         "Moran's I P-Value" = moran_p)
+
+disag_table %>%
+  kable(format = "html", digits = 3) %>% 
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+    full_width = FALSE,
+    position = "center",
+    font_size = 14
+  ) %>% 
+  row_spec(0, bold = TRUE, color = "black", background = "#4392CE") %>%
+  row_spec(1:nrow(disag_table), color = "black", background = "#74B444")%>%
+  save_kable(here::here('Outputs','figures',"disag_table.png"))
+```
+
+
+
+Sample models
+```{r}
+set.seed(76)
+
+sample_biodiv_area_search_agg <- birds_joined %>% 
+    filter(survey_type %in% "Area Search")  %>% 
+    gini_simpson()%>% 
+    mutate(protection = ifelse(gap_sts %in% c(1,2), 
+                               'Protected', 'Non-protected')) %>% 
+    slice_sample(prop = sample)
+  
+  sample_area_agg <- fit_agg(sample_biodiv_area_search_agg, sample)
+  
+  sample_biodiv_point_count_agg <- birds_joined %>% 
+    filter(survey_type %in% "Point Count") %>% 
+    gini_simpson() %>%
+    mutate(protection = ifelse(gap_sts %in% c(1,2), 
+                               'Protected', 'Non-protected'))%>% 
+    slice_sample(prop = sample)
+  
+  sample_point_agg <- fit_agg(sample_biodiv_point_count_agg, sample)
+  
+  sample_biodiv_area_search_disag <- birds_joined %>% 
+    mutate(gap_sts = as.numeric(gap_sts)) %>% 
+    filter(survey_type %in% "Area Search") %>% 
+    gini_simpson() %>% 
+    slice_sample(prop = sample)
+  
+  sample_area_disag <- fit_disagg(sample_biodiv_area_search_disag, sample) 
+  
+  sample_biodiv_point_count_disag <- birds_joined %>% 
+    mutate(gap_sts = as.numeric(gap_sts)) %>% 
+    filter(survey_type %in% "Point Count") %>% 
+    gini_simpson() %>% 
+    slice_sample(prop = sample)
+  
+ sample_point_disag <- fit_disagg(sample_biodiv_point_count_disag, sample)
+  
+  
+  sample_birds_rich <- birds_joined %>%  
+    gini_simpson() %>% 
+    mutate(protection = ifelse(gap_sts %in% c(1,2), 
+                               'Protected', 'Non-protected'))%>% 
+    slice_sample(prop = sample)
+  
+  sample_bird_summary <- fit_agg(sample_birds_rich, sample)
+  
+
+models <- list(
+  sample_point_disag  = sample_point_disag,
+  sample_area_disag   = sample_area_disag,
+  sample_point_agg    = sample_point_agg,
+  sample_area_agg     = sample_area_agg,
+  sample_bird_summary = sample_bird_summary
+)
+
+sample_spatial_temporal_tests <- list()
+
+model_data_map <- list(
+  sample_point_disag  = sample_biodiv_point_count_disag,
+  sample_area_disag   = sample_biodiv_area_search_disag,
+  sample_point_agg    = sample_biodiv_point_count_agg,
+  sample_area_agg     = sample_biodiv_area_search_agg,
+  sample_bird_summary = sample_birds_rich
+)
+
+
+sample_spatial_temporal_tests <- run_spatial_temporal_tests(
+  models         = models,
+  model_data_map = model_data_map,
+  habitats       = habitats
+)
+
+print(sample_spatial_temporal_tests, n = 38)
+```
+
+Adjust models
+```{r}
+#|warning: FALSE
+adj_area_agg <- adj_fit_agg(biodiv_area_search_agg, sample)
+
+adj_point_agg <- adj_fit_agg(biodiv_point_count_agg, sample)
+
+adj_area_disag <- adj_fit_disagg(biodiv_area_search_disag, sample) 
+
+adj_point_disag <- adj_fit_disagg(biodiv_point_count_disag, sample)
+
+adj_bird_summary <- adj_fit_agg(birds_rich, sample)
+
+models <- list(
+  adj_point_disag  = adj_point_disag,
+  adj_area_disag   = adj_area_disag,
+  adj_point_agg    = adj_point_agg,
+  adj_area_agg     = adj_area_agg,
+  adj_bird_summary = adj_bird_summary
+)
+
+adj_spatial_temporal_tests <- list()
+
+model_data_map <- list(
+  adj_point_disag  = biodiv_point_count_disag,
+  adj_area_disag   = biodiv_area_search_disag,
+  adj_point_agg    = biodiv_point_count_agg,
+  adj_area_agg     = biodiv_area_search_agg,
+  adj_bird_summary = birds_rich
+)
+
+
+adj_spatial_temporal_tests <- run_spatial_temporal_tests(
+  models         = models,
+  model_data_map = model_data_map,
+  habitats       = habitats
+)
+
+print(adj_spatial_temporal_tests, n=38)
+```
+
+Adjusted model and sampled 
+```{r}
+#|warning: FALSE
+adj_sample_area_agg <- adj_fit_agg(sample_biodiv_area_search_agg, sample)
+
+adj_sample_point_agg <- adj_fit_agg(sample_biodiv_point_count_agg, sample)
+
+adj_sample_area_disag <- adj_fit_disagg(sample_biodiv_area_search_disag, sample)
+
+adj_sample_point_disag <- adj_fit_disagg(sample_biodiv_point_count_disag, sample)
+
+adj_sample_bird_summary <- adj_fit_agg(birds_rich, sample)
+
+models <- list(
+  adj_sample_point_disag  = adj_sample_point_disag,
+  adj_sample_area_disag   = adj_sample_area_disag,
+  adj_sample_point_agg    = adj_sample_point_agg,
+  adj_sample_area_agg     = adj_sample_area_agg,
+  adj_sample_bird_summary = adj_sample_bird_summary
+)
+
+adj_sample_spatial_temporal_tests <- list()
+
+model_data_map <- list(
+  adj_sample_point_disag  = sample_biodiv_point_count_disag,
+  adj_sample_area_disag = sample_biodiv_area_search_disag,
+  adj_sample_point_agg    = sample_biodiv_point_count_agg,
+  adj_sample_area_agg     = sample_biodiv_area_search_agg,
+  adj_sample_bird_summary = sample_birds_rich
+)
+
+
+adj_sample_spatial_temporal_tests <- run_spatial_temporal_tests(
+  models         = models,
+  model_data_map = model_data_map,
+  habitats       = habitats
+)
+
+print(adj_sample_spatial_temporal_tests, n = 38)
+```
+

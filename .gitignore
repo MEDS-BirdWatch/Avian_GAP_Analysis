@@ -50,10 +50,21 @@ rsconnect/
 
 # Data
 /data/ 
-<<<<<<< HEAD
-=======
 
+
+# Leaflet HTML 
 Analysis/leaflet/leaflet.html
 
+# GLMM FILES
+Analysis/Models/GLMM_cache/
+Analysis/Models/GLMM_files/
+Analysis/Models/GLMM.html
 
->>>>>>> 5dfe080fc8e3976517b0f45ee1fc58bb32d0e2e1
+# All HTMLS
+/*.html
+
+# All Cache
+/*cache/
+
+# .DS_store
+/.DS_Store

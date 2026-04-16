@@ -28,7 +28,6 @@ pacman::p_load('tidyverse',
 source("/Users/petervitale/Desktop/MEDS/BirdWatch/Avian_GAP_Analysis/R/spatial_join.R")
 ```
 
-
 ```{r}
 lifeform_colors <- c(
   CONIFER = "#74B162",
@@ -72,7 +71,7 @@ habitat_poly <- st_transform(habitat_poly, crs = 4326)
 
 # Set icon 
 icon <- makeIcon(
-  iconUrl = here::here('analysis','feather-pointed-solid.png'),
+  iconUrl = here::here('analysis','leaflet','feather-pointed-solid.png'),
   iconWidth = 25, 
   iconHeight = 40
 )
