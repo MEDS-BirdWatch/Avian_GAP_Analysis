@@ -10,6 +10,8 @@ library(stars) #0.6-8
 library(terra) #1.8-42
 library(arcgislayers)
 library(tigris) #2.2.1
+library(arrow) #23.0.1.2
+library(sfarrow) #0.4.1
 #-------------------------------------------------------------------------------
 
 
@@ -65,6 +67,9 @@ levels(habitat_simple) <- data.frame(value = 1:8, LIFEFORM = c('CONIFER',
 # Convert to polygons 
 habitat_poly <- as.polygons(habitat_simple) %>% 
   st_as_sf()
+
+# Write st data to parquet
+st_write_parquet(habitat_poly, here('data', 'data_processed','habitat_polygon.parquet'))
 #--------------------------------------------------------------------------------
 
 #-------------------------------California Shape-------------------------------
@@ -107,6 +112,8 @@ gap_5 <- gap_5 %>%
 
 gap_clean <- bind_rows(gap_clean, gap_5)
 
+# Write st data to parquet
+st_write_parquet(gap_clean, here('data', 'data_processed','gap_polygon.parquet'))
 #-------------------------------------------------------------------------------
 
 #------------------------------AKN data-----------------------------------------
@@ -142,7 +149,8 @@ habitat_id <- terra::extract(habitat_type, vect(birds_joined), ID = FALSE)[,1]
 
 birds_joined$habitat_type <- habitat_id
 
-birds_joined <- left_join(birds_joined, area_intersection)
+birds_joined <- left_join(birds_joined, area_intersection) %>% 
+  filter(habitat_type != 'BARREN/OTHER')
 
 # Remove demo and test codes
 
@@ -152,5 +160,7 @@ birds_joined <- birds_joined %>%
            ! grepl("Dummy",project_name) &
            ! grepl("Test", project_name))
 
+# Write st data to parquet
+st_write_parquet(birds_joined, here('data', 'data_processed','birds_joined.parquet'))
 #-------------------------------------------------------------------------------
 

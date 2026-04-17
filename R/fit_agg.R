@@ -1,5 +1,5 @@
 
-fit_agg <- function(dat, sample_size){
+fit_agg <- function(dat){
   habitats <- unique(dat$habitat_type)
   tmp <- vector(mode = 'list', length = 0)
   model <- vector(mode = 'list', length = 0)
@@ -11,14 +11,14 @@ fit_agg <- function(dat, sample_size){
       filter(habitat_type == i)
     
     if (n_distinct(tmp[[i]]$protection) < 2) { 
-      message("Skipping: ",sample_size, ' ', i)
+      message("Skipping: ",  i)
       next
     }
     
     model[[i]] <- tryCatch(
       glmmTMB(rich_gini ~ protection, family = beta_family(), data = tmp[[i]]),
       error = function(e) {
-        message("Error at: ", sample_size, " ", i, " | ", e$message)
+        message("Error at: ", i, " | ", e$message)
         NULL
       }
     )

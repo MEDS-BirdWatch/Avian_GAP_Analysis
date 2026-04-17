@@ -1,4 +1,4 @@
-fit_disagg <- function(dat, sample_size){
+fit_disagg <- function(dat){
   
   habitats <- unique(dat$habitat_type)
   tmp <- vector(mode = 'list', length = 0)
@@ -11,14 +11,14 @@ fit_disagg <- function(dat, sample_size){
       filter(habitat_type == i)
     
     if (n_distinct(tmp[[i]]$gap_sts) < 2) { 
-      message("Skipping: ",sample_size, ' ', i)
+      message("Skipping: ", i)
       next
     }
     
     model[[i]] <- tryCatch(
       glmmTMB(rich_gini ~ gap_sts, family = beta_family(), data = tmp[[i]]),
       error = function(e) {
-        message("Error at: ", sample_size, " ", i, " | ", e$message)
+        message("Error at: ", i, " | ", e$message)
         NULL
       }
     )
