@@ -43,7 +43,7 @@ biodiv_area_search_agg <- birds_joined %>%
                                'Protected', 'Non-protected')) %>% 
     arrange(desc(observation_date))
   
-  area_agg <- fit_agg(biodiv_area_search_agg, sample)
+  area_agg <- fit_agg(biodiv_area_search_agg)
   
   biodiv_point_count_agg <- birds_joined %>% 
     filter(survey_type %in% "Point Count") %>% 
@@ -52,23 +52,25 @@ biodiv_area_search_agg <- birds_joined %>%
                                'Protected', 'Non-protected'))%>% 
     arrange(desc(observation_date))
   
-  point_agg <- fit_agg(biodiv_point_count_agg, sample)
+  point_agg <- fit_agg(biodiv_point_count_agg)
   
   biodiv_area_search_disag <- birds_joined %>% 
     mutate(gap_sts = as.numeric(gap_sts)) %>% 
     filter(survey_type %in% "Area Search") %>% 
-    gini_simpson() %>% 
+    gini_simpson()%>% 
+    mutate(gap_sts = as.factor(gap_sts)) %>% 
     arrange(desc(observation_date))
   
-  area_disag <- fit_disagg(biodiv_area_search_disag, sample) 
+  area_disag <- fit_disagg(biodiv_area_search_disag) 
   
   biodiv_point_count_disag <- birds_joined %>% 
     mutate(gap_sts = as.numeric(gap_sts)) %>% 
     filter(survey_type %in% "Point Count") %>% 
     gini_simpson() %>% 
+    mutate(gap_sts = as.factor(gap_sts)) %>% 
     arrange(desc(observation_date))
   
- point_disag <- fit_disagg(biodiv_point_count_disag, sample)
+ point_disag <- fit_disagg(biodiv_point_count_disag)
   
   
   birds_rich <- birds_joined %>%  
@@ -77,7 +79,7 @@ biodiv_area_search_agg <- birds_joined %>%
                                'Protected', 'Non-protected'))%>% 
     arrange(desc(observation_date))
   
-  bird_summary <- fit_agg(birds_rich, sample)
+  bird_summary <- fit_agg(birds_rich)
   
 
 models <- list(
@@ -125,8 +127,166 @@ disag_table %>%
     font_size = 14
   ) %>% 
   row_spec(0, bold = TRUE, color = "black", background = "#4392CE") %>%
-  row_spec(1:nrow(disag_table), color = "black", background = "#74B444")%>%
-  save_kable(here::here('Outputs','figures',"disag_table.png"))
+  row_spec(seq(1, nrow(disag_table), 2), color = "black", background = "#74B444") %>%
+  row_spec(seq(2, nrow(disag_table), 2), color = "black", background = "#A8D175")%>%
+  save_kable(here::here('Outputs', 'figures', "disag_table.png"), zoom =3)
+
+agg_table <- spatial_temporal_tests %>% 
+  filter(grepl("_agg", model_name)) %>% 
+  rename('Model Name' = model_name, 'Habitat' = habitat, 
+         'Durbin Watson' = dw, "Moran's I Statistic" = moran_I,
+         "Moran's I P-Value" = moran_p)
+
+agg_table %>%
+  kable(format = "html", digits = 3) %>% 
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+    full_width = FALSE,
+    position = "center",
+    font_size = 14
+  ) %>% 
+  row_spec(0, bold = TRUE, color = "black", background = "#4392CE") %>%
+  row_spec(seq(1, nrow(disag_table), 2), color = "black", background = "#74B444") %>%
+  row_spec(seq(2, nrow(disag_table), 2), color = "black", background = "#A8D175")%>%
+  save_kable(here::here('Outputs', 'figures', "agg_table.png"), zoom =3)
+```
+
+
+Gt Tables
+```{r}
+# Build a merged table (Area Search | Point Count) for each habitat
+all_habitats <- union(names(area_agg), names(point_agg))
+
+merged_by_habitat <- map(all_habitats, ~{
+  area_model  <- area_agg[[.x]]
+  point_model <- point_agg[[.x]]
+  
+  if (is.null(area_model) | is.null(point_model)) {
+    message("Skipping ", .x, " — missing model in one survey type")
+    return(NULL)
+  }
+  
+  tbl_merge(
+    tbls = list(
+      tbl_regression(area_model),
+      tbl_regression(point_model)
+    ),
+    tab_spanner = c("**Area Search**", "**Point Count**")
+  )
+}) %>%
+  setNames(all_habitats) %>%
+  compact()  # drops NULLs
+
+# Stack all habitat tables with labels
+aggregated_model_table <- tbl_stack(
+  tbls = merged_by_habitat,
+  group_header = names(merged_by_habitat)
+)
+
+pointblue   <- "#4495D1"
+pointgreen1 <- "#74B444"
+pointgreen2 <- "#A8D175"
+
+agg_gt <- aggregated_model_table %>%
+  as_gt() %>%
+  tab_header(
+    title = "Protection Status Effect on Biodiversity by Habitat Type"
+  ) %>%
+  tab_style(
+    style = list(cell_fill(color = pointblue), cell_text(color = "black", weight = "bold")),
+    locations = cells_title()
+  ) %>%
+  tab_style(
+    style = list(cell_fill(color = pointblue), cell_text(color = "black", weight = "bold")),
+    locations = cells_column_labels(everything())
+  ) %>%
+  tab_style(
+    style = list(cell_fill(color = pointblue), cell_text(color = "black", weight = "bold")),
+    locations = cells_column_spanners(everything())
+  ) %>%
+  tab_style(
+    style = list(cell_fill(color = pointblue), cell_text(color = "black", weight = "bold")),
+    locations = cells_row_groups()
+  ) %>%
+  tab_style(
+    style = cell_fill(color = pointgreen1),
+    locations = cells_body(rows = seq(1, nrow(aggregated_model_table$table_body), 2))
+  ) %>%
+  tab_style(
+    style = cell_fill(color = pointgreen2),
+    locations = cells_body(rows = seq(2, nrow(aggregated_model_table$table_body), 2))
+  ) %>%
+  tab_source_note("Note: Models fit using glmmTMB with beta family.")
+
+gtsave(agg_gt, here::here("Outputs", "figures", "agg_gt_table.png"), zoom = 3)
+
+## Disagg
+
+# Build a merged table (Area Search | Point Count) for each habitat
+all_habitats <- union(names(area_disag), names(point_disag))
+
+merged_by_habitat <- map(all_habitats, ~{
+  area_model  <- area_disag[[.x]]
+  point_model <- point_disag[[.x]]
+  
+  if (is.null(area_model) | is.null(point_model)) {
+    message("Skipping ", .x, " — missing model in one survey type")
+    return(NULL)
+  }
+  
+  tbl_merge(
+    tbls = list(
+      tbl_regression(area_model),
+      tbl_regression(point_model)
+    ),
+    tab_spanner = c("**Area Search**", "**Point Count**")
+  )
+}) %>%
+  setNames(all_habitats) %>%
+  compact()  # drops NULLs
+
+# Stack all habitat tables with labels
+disaggregated_model_table <- tbl_stack(
+  tbls = merged_by_habitat,
+  group_header = names(merged_by_habitat)
+)
+
+pointblue   <- "#4495D1"
+pointgreen1 <- "#74B444"
+pointgreen2 <- "#A8D175"
+
+disagg_gt <- disaggregated_model_table %>%
+  as_gt() %>%
+  tab_header(
+    title = "GAP Status Effect on Biodiversity by Habitat Type"
+  ) %>%
+  tab_style(
+    style = list(cell_fill(color = pointblue), cell_text(color = "black", weight = "bold")),
+    locations = cells_title()
+  ) %>%
+  tab_style(
+    style = list(cell_fill(color = pointblue), cell_text(color = "black", weight = "bold")),
+    locations = cells_column_labels(everything())
+  ) %>%
+  tab_style(
+    style = list(cell_fill(color = pointblue), cell_text(color = "black", weight = "bold")),
+    locations = cells_column_spanners(everything())
+  ) %>%
+  tab_style(
+    style = list(cell_fill(color = pointblue), cell_text(color = "black", weight = "bold")),
+    locations = cells_row_groups()
+  ) %>%
+  tab_style(
+    style = cell_fill(color = pointgreen1),
+    locations = cells_body(rows = seq(1, nrow(disaggregated_model_table$table_body), 2))
+  ) %>%
+  tab_style(
+    style = cell_fill(color = pointgreen2),
+    locations = cells_body(rows = seq(2, nrow(disaggregated_model_table$table_body), 2))
+  ) %>%
+  tab_source_note("Note: Models fit using glmmTMB with beta family.") 
+
+gtsave(disagg_gt, here::here("Outputs", "figures", "disagg_gt_table.png"), zoom = 3)
 ```
 
 
@@ -247,6 +407,132 @@ adj_spatial_temporal_tests <- run_spatial_temporal_tests(
 
 print(adj_spatial_temporal_tests, n=38)
 ```
+
+## GT Tables for adjusted models
+```{r}
+# Aggregated model table (protection)
+all_habitats_agg <- union(names(adj_area_agg), names(adj_point_agg))
+
+merged_adj_agg <- map(all_habitats_agg, ~{
+  area_model  <- adj_area_agg[[.x]]
+  point_model <- adj_point_agg[[.x]]
+  
+  if (is.null(area_model) | is.null(point_model)) {
+    message("Skipping ", .x, " — missing model in one survey type")
+    return(NULL)
+  }
+  
+  tbl_merge(
+    tbls = list(
+      tbl_regression(area_model),
+      tbl_regression(point_model)
+    ),
+    tab_spanner = c("**Area Search**", "**Point Count**")
+  )
+}) %>%
+  setNames(all_habitats_agg) %>%
+  compact()
+
+adj_aggregated_model_table <- tbl_stack(
+  tbls = merged_adj_agg,
+  group_header = names(merged_adj_agg)
+)
+
+adj_agg_gt_table <- adj_aggregated_model_table %>%
+  as_gt() %>%
+  tab_header(
+    title = "Protection Status Effect on Biodiversity by Habitat Type"
+  ) %>%
+  tab_style(
+    style = list(cell_fill(color = pointblue), cell_text(color = "black", weight = "bold")),
+    locations = cells_title()
+  ) %>%
+  tab_style(
+    style = list(cell_fill(color = pointblue), cell_text(color = "black", weight = "bold")),
+    locations = cells_column_labels(everything())
+  ) %>%
+  tab_style(
+    style = list(cell_fill(color = pointblue), cell_text(color = "black", weight = "bold")),
+    locations = cells_column_spanners(everything())
+  ) %>%
+  tab_style(
+    style = list(cell_fill(color = pointblue), cell_text(color = "black", weight = "bold")),
+    locations = cells_row_groups()
+  ) %>%
+  tab_style(
+    style = cell_fill(color = pointgreen1),
+    locations = cells_body(rows = seq(1, nrow(adj_aggregated_model_table$table_body), 2))
+  ) %>%
+  tab_style(
+    style = cell_fill(color = pointgreen2),
+    locations = cells_body(rows = seq(2, nrow(adj_aggregated_model_table$table_body), 2))
+  ) %>%
+  tab_source_note("Note: Models fit using glmmTMB with beta family.")
+
+gtsave(adj_agg_gt_table, here::here("Outputs", "figures", "adj_agg_gt_table.png"), zoom = 3)
+
+# Disaggregated model table (gap_sts)
+all_habitats_disag <- union(names(adj_area_disag), names(adj_point_disag))
+
+merged_adj_disag <- map(all_habitats_disag, ~{
+  area_model  <- adj_area_disag[[.x]]
+  point_model <- adj_point_disag[[.x]]
+  
+  if (is.null(area_model) | is.null(point_model)) {
+    message("Skipping ", .x, " — missing model in one survey type")
+    return(NULL)
+  }
+  
+  tbl_merge(
+    tbls = list(
+      tbl_regression(area_model,  tidy_fun = broom.mixed::tidy),
+      tbl_regression(point_model, tidy_fun = broom.mixed::tidy)
+    ),
+    tab_spanner = c("**Area Search**", "**Point Count**")
+  )
+}) %>%
+  setNames(all_habitats_disag) %>%
+  compact()
+
+adj_disaggregated_model_table <- tbl_stack(
+  tbls = merged_adj_disag,
+  group_header = names(merged_adj_disag)
+)
+
+adj_disagg_gt_table <- adj_disaggregated_model_table %>%
+  as_gt() %>%
+  tab_header(
+    title = "GAP Status Effect on Biodiversity by Habitat Type"
+  ) %>%
+  tab_style(
+    style = list(cell_fill(color = pointblue), cell_text(color = "black", weight = "bold")),
+    locations = cells_title()
+  ) %>%
+  tab_style(
+    style = list(cell_fill(color = pointblue), cell_text(color = "black", weight = "bold")),
+    locations = cells_column_labels(everything())
+  ) %>%
+  tab_style(
+    style = list(cell_fill(color = pointblue), cell_text(color = "black", weight = "bold")),
+    locations = cells_column_spanners(everything())
+  ) %>%
+  tab_style(
+    style = list(cell_fill(color = pointblue), cell_text(color = "black", weight = "bold")),
+    locations = cells_row_groups()
+  ) %>%
+  tab_style(
+    style = cell_fill(color = pointgreen1),
+    locations = cells_body(rows = seq(1, nrow(adj_disaggregated_model_table$table_body), 2))
+  ) %>%
+  tab_style(
+    style = cell_fill(color = pointgreen2),
+    locations = cells_body(rows = seq(2, nrow(adj_disaggregated_model_table$table_body), 2))
+  ) %>%
+  tab_source_note("Note: Models fit using glmmTMB with beta family.")
+
+gtsave(adj_disagg_gt_table, here::here("Outputs", "figures", "adj_disagg_gt_table.png"), zoom = 3)
+```
+
 
 Adjusted model and sampled 
 ```{r}
