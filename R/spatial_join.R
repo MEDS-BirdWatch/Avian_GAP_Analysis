@@ -14,6 +14,10 @@ library(arrow) #23.0.1.2
 library(sfarrow) #0.4.1
 #-------------------------------------------------------------------------------
 
+#---------------------Create Processed data folder (if none exists)------------
+ifelse(dir.exists(here("data","data_processed")),print("Directory: data_processed exists"), dir.create(here("data","data_processed")))
+
+#-------------------------------------------------------------------------------  
 
 #----------------------------------CAL FIRE-------------------------------------
 # Source geodatabase from CAL FIRE
@@ -119,11 +123,15 @@ st_write_parquet(gap_clean, here('data', 'data_processed','gap_polygon.parquet')
 #------------------------------AKN data-----------------------------------------
 point_count <- read_csv(here::here('data', 'point_count.csv')) %>% 
   clean_names() %>% 
-  mutate(survey_type = 'Point Count')
+  mutate(survey_type = 'Point Count') %>% 
+  mutate(survey_duration = case_when(
+    protocol_code == 'FR50_T10' ~ 10,
+    TRUE ~ 5
+  ))
 
 area_search <- read_csv(here::here('data', 'area_search.csv')) %>% 
   clean_names() %>% 
-  mutate(survey_type = 'Area Search')
+  mutate(survey_type = 'Area Search') 
 
 point_area_geo <- full_join(area_search, point_count) %>% 
   st_as_sf(coords = c("decimal_longitude", "decimal_latitude"), crs = 4326) %>% 
@@ -160,7 +168,25 @@ birds_joined <- birds_joined %>%
            ! grepl("Dummy",project_name) &
            ! grepl("Test", project_name))
 
+# Assign protected and unprotected
+birds_joined <- birds_joined %>% 
+  mutate(protection_sts = case_when(
+    gap_sts %in% c(3,4,5) ~ 'unprotected',
+    TRUE~ 'protected'
+  )) %>% 
+  # and add sample_effort column
+  group_by(year_collected, protocol_code) %>% 
+  # There are some negative survey_duration, so we take the absolute value
+  mutate(sample_effort = abs(survey_duration) * n()) %>% 
+  ungroup() %>% 
+  filter(!is.na(sample_effort))
+
+# Drop columns unrelated to analysis 
+birds_joined <- birds_joined %>% 
+  select(global_unique_identifier, study_area, protocol_code, observation_date, year_collected, month_collected, survey_duration, scientific_name, common_name, species_code, observation_count, survey_type, habitat_type, geometry, gap_sts, area, protection, sample_effort)
+
 # Write st data to parquet
 st_write_parquet(birds_joined, here('data', 'data_processed','birds_joined.parquet'))
 #-------------------------------------------------------------------------------
 
+rm(list = ls())

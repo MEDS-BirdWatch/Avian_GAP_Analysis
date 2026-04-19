@@ -8,17 +8,9 @@ cache: TRUE
 Load packages
 
 ```{r}
-pacman::p_load('tidyverse', 
-               'sf', 
+pacman::p_load('tidyverse',
+               'sf',
                'here',
-               'janitor',
-               'tmap', 
-               'kableExtra',
-               'patchwork',
-               'ggthemes',
-               'colorRamps',
-               'stars',
-               'terra',
                'leaflet',
                'leaflet.extras',
                'leafem')
