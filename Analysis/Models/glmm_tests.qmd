@@ -109,6 +109,17 @@ spatial_temporal_tests <- run_spatial_temporal_tests(
 
 print(spatial_temporal_tests, n = 38)
 ```
+Run models over all habitat types as fixed effect
+```{r}
+full_model_agg <-  glmmTMB(rich_gini ~ protection + habitat_type, 
+                           family = beta_family(), data = birds_joined)
+
+full_model_disagg <- glmmTMB(rich_gini ~ gap_sts + habitat_type, 
+                             family = beta_family(), data = birds_joined)
+
+```
+
+
 
 Make into a Kable table for TM
 ```{r}

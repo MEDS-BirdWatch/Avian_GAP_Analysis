@@ -183,7 +183,7 @@ birds_joined <- birds_joined %>%
 
 # Drop columns unrelated to analysis 
 birds_joined <- birds_joined %>% 
-  select(global_unique_identifier, study_area, protocol_code, observation_date, year_collected, month_collected, survey_duration, scientific_name, common_name, species_code, observation_count, survey_type, habitat_type, geometry, gap_sts, area, protection, sample_effort)
+  select(global_unique_identifier, study_area, protocol_code, observation_date, year_collected, month_collected, survey_duration, scientific_name, common_name, species_code, observation_count, survey_type, habitat_type, geometry, gap_sts, area, protection_sts, sample_effort)
 
 # Write st data to parquet
 st_write_parquet(birds_joined, here('data', 'data_processed','birds_joined.parquet'))
