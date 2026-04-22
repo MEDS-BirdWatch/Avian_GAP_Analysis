@@ -127,13 +127,15 @@ point_count <- read_csv(here::here('data', 'point_count.csv')) %>%
   mutate(survey_duration = case_when(
     protocol_code == 'FR50_T10' ~ 10,
     TRUE ~ 5
-  ))
+  )) %>% 
+  select(global_unique_identifier, project_code, project_name, study_area, protocol_code, observation_date, year_collected, month_collected, survey_duration, scientific_name, common_name, species_code, observation_count, survey_type, survey_duration, decimal_latitude, decimal_longitude)
 
 area_search <- read_csv(here::here('data', 'area_search.csv')) %>% 
   clean_names() %>% 
-  mutate(survey_type = 'Area Search') 
+  mutate(survey_type = 'Area Search') %>% 
+  select(global_unique_identifier, project_code, project_name, study_area, protocol_code, observation_date, year_collected, month_collected, survey_duration, scientific_name, common_name, species_code, observation_count, survey_type, survey_duration, decimal_latitude, decimal_longitude)
 
-point_area_geo <- full_join(area_search, point_count) %>% 
+point_area_geo <- bind_rows(area_search, point_count) %>% 
   st_as_sf(coords = c("decimal_longitude", "decimal_latitude"), crs = 4326) %>% 
   st_transform(st_crs(habitat_type))
 #-------------------------------------------------------------------------------
@@ -179,11 +181,9 @@ birds_joined <- birds_joined %>%
   # There are some negative survey_duration, so we take the absolute value
   mutate(sample_effort = abs(survey_duration) * n()) %>% 
   ungroup() %>% 
-  filter(!is.na(sample_effort))
+  filter(!is.na(sample_effort)) %>% 
+  mutate(gap_sts = as.numeric(gap_sts))
 
-# Drop columns unrelated to analysis 
-birds_joined <- birds_joined %>% 
-  select(global_unique_identifier, study_area, protocol_code, observation_date, year_collected, month_collected, survey_duration, scientific_name, common_name, species_code, observation_count, survey_type, habitat_type, geometry, gap_sts, area, protection_sts, sample_effort)
 
 # Write st data to parquet
 st_write_parquet(birds_joined, here('data', 'data_processed','birds_joined.parquet'))

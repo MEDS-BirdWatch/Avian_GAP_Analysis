@@ -42,7 +42,7 @@ run_spatial_temporal_tests <- function(models, model_data_map, habitats) {
       moran_p <- NA_real_
       if (nrow(dat_site) > 4) {
         coords  <- st_coordinates(dat_site)
-        nb      <- knn2nb(knearneigh(coords, k = 4))
+        nb      <- knn2nb(knearneigh(coords, k = 2))
         listw   <- nb2listw(nb, style = "W")
         moran   <- moran.test(dat_site$res, listw)
         moran_I <- moran$estimate["Moran I statistic"]

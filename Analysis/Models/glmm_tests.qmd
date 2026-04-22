@@ -6,6 +6,7 @@ warning: FALSE
 ---
 
 ```{r}
+library(tidyverse)
 library(sf) #1.0-21
 library(here) #1.0.1
 library(janitor) #2.2.1
@@ -18,16 +19,19 @@ library(gtExtras)
 library(lmtest)
 library(spdep)
 library(kableExtra)
+library(sfarrow)
 
 source(here('R', 'autocorrelation_tests.R'))
 source(here('R','fit_agg.R'))
 source(here('R','fit_disagg.R'))
 source(here('R','adj_fit_agg.R'))
 source(here('R', 'adj_fit_disagg.R'))
-source(here("R", "spatial_join.R"))
+
 source(here('R', 'rich_gini.R'))
 set.seed(76)
 sample = .8
+
+birds_joined <- st_read_parquet(here('data', 'data_processed','birds_joined.parquet'))
 
 habitats <- unique(birds_joined$habitat_type)
 ```
@@ -58,7 +62,6 @@ biodiv_area_search_agg <- birds_joined %>%
     mutate(gap_sts = as.numeric(gap_sts)) %>% 
     filter(survey_type %in% "Area Search") %>% 
     gini_simpson()%>% 
-    mutate(gap_sts = as.factor(gap_sts)) %>% 
     arrange(desc(observation_date))
   
   area_disag <- fit_disagg(biodiv_area_search_disag) 
@@ -67,7 +70,6 @@ biodiv_area_search_agg <- birds_joined %>%
     mutate(gap_sts = as.numeric(gap_sts)) %>% 
     filter(survey_type %in% "Point Count") %>% 
     gini_simpson() %>% 
-    mutate(gap_sts = as.factor(gap_sts)) %>% 
     arrange(desc(observation_date))
   
  point_disag <- fit_disagg(biodiv_point_count_disag)
@@ -109,14 +111,51 @@ spatial_temporal_tests <- run_spatial_temporal_tests(
 
 print(spatial_temporal_tests, n = 38)
 ```
+
+
 Run models over all habitat types as fixed effect
+
 ```{r}
+
 full_model_agg <-  glmmTMB(rich_gini ~ protection + habitat_type, 
-                           family = beta_family(), data = birds_joined)
+                           family = beta_family(), data = birds_rich)
 
 full_model_disagg <- glmmTMB(rich_gini ~ gap_sts + habitat_type, 
-                             family = beta_family(), data = birds_joined)
+                             family = beta_family(), data = birds_rich)
 
+res_agg <- residuals(full_model_agg, type = "pearson")
+res_disagg <- residuals(full_model_disagg, type = "pearson")
+
+dwtest(res_agg ~ 1)$statistic
+dwtest(res_disagg ~ 1)$statistic
+```
+
+Morans i 
+```{r}
+dat_site <- birds_rich %>%
+  slice(seq_along(res_agg)) %>%
+  mutate(res = res_agg) %>%
+  group_by(study_area) %>%
+  summarize(res = mean(res), geometry = first(geometry)) %>%
+  st_as_sf()
+
+coords <- st_coordinates(dat_site)
+nb <- knn2nb(knearneigh(coords, k = 4))
+listw <- nb2listw(nb)
+moran.test(dat_site$res, listw)
+
+# disagg
+dat_site <- birds_rich %>%
+  slice(seq_along(res_disagg)) %>%
+  mutate(res = res_disagg) %>%
+  group_by(study_area) %>%
+  summarize(res = mean(res), geometry = first(geometry)) %>%
+  st_as_sf()
+
+coords <- st_coordinates(dat_site)
+nb <- knn2nb(knearneigh(coords, k = 4))
+listw <- nb2listw(nb)
+moran.test(dat_site$res, listw)
 ```
 
 
@@ -313,7 +352,7 @@ sample_biodiv_area_search_agg <- birds_joined %>%
                                'Protected', 'Non-protected')) %>% 
     slice_sample(prop = sample)
   
-  sample_area_agg <- fit_agg(sample_biodiv_area_search_agg, sample)
+  sample_area_agg <- fit_agg(sample_biodiv_area_search_agg)
   
   sample_biodiv_point_count_agg <- birds_joined %>% 
     filter(survey_type %in% "Point Count") %>% 
@@ -322,7 +361,7 @@ sample_biodiv_area_search_agg <- birds_joined %>%
                                'Protected', 'Non-protected'))%>% 
     slice_sample(prop = sample)
   
-  sample_point_agg <- fit_agg(sample_biodiv_point_count_agg, sample)
+  sample_point_agg <- fit_agg(sample_biodiv_point_count_agg)
   
   sample_biodiv_area_search_disag <- birds_joined %>% 
     mutate(gap_sts = as.numeric(gap_sts)) %>% 
@@ -330,7 +369,7 @@ sample_biodiv_area_search_agg <- birds_joined %>%
     gini_simpson() %>% 
     slice_sample(prop = sample)
   
-  sample_area_disag <- fit_disagg(sample_biodiv_area_search_disag, sample) 
+  sample_area_disag <- fit_disagg(sample_biodiv_area_search_disag) 
   
   sample_biodiv_point_count_disag <- birds_joined %>% 
     mutate(gap_sts = as.numeric(gap_sts)) %>% 
@@ -338,7 +377,7 @@ sample_biodiv_area_search_agg <- birds_joined %>%
     gini_simpson() %>% 
     slice_sample(prop = sample)
   
- sample_point_disag <- fit_disagg(sample_biodiv_point_count_disag, sample)
+ sample_point_disag <- fit_disagg(sample_biodiv_point_count_disag)
   
   
   sample_birds_rich <- birds_joined %>%  
@@ -347,7 +386,7 @@ sample_biodiv_area_search_agg <- birds_joined %>%
                                'Protected', 'Non-protected'))%>% 
     slice_sample(prop = sample)
   
-  sample_bird_summary <- fit_agg(sample_birds_rich, sample)
+  sample_bird_summary <- fit_agg(sample_birds_rich)
   
 
 models <- list(
