@@ -1,0 +1,424 @@
+---
+title: "population_trends"
+format: html
+---
+## Focal species models
+In this workflow we will perform the following:
+1. Define our focal species from our `indicator_analysis.qmd` workflow. The species produced in the `focal_species` dataframe were then sent to Point Blue staff scientists for further guidance on determining our focal species. 
+2. Run model fit diagnoist checks for 1) all focal species (no survey subset) 2) all focal species (survey subset). 
+3. Figure out sampling effort: 1) Bin data across 2-5 years 2) quantify survey effort
+3. Run GLMMM model for aggregated data where protection status is determined by protected (GAP status 1 - 2) and unprotected (GAP status 3-5). Summarize results with {gt} summary. 
+4. Run GLMM model for disaggregated data with all GAP status protection levels. Summarize results with {gt} summary. 
+5. Look into autocorrelation of results. 
+
+
+```{r}
+#| label: set-up
+# Load environment 
+library(tidyverse)
+library(here)
+library(glmmTMB)
+library(gtsummary)
+library(sf)
+library(sfarrow)
+library(lmtest)
+
+
+# Source function
+source(here("R", "population_trend.R")) # UPDATE
+
+source(here("R", "autocorrelation_tests.R"))
+
+birds_joined <- st_read_parquet(here("data","data_processed","birds_joined.parquet"))
+
+```
+
+### Define focal species 
+```{r}
+# Data Frame of focal species 
+focal_species <- data.frame(
+  habitat_type = c("SHRUB", "HERBACEOUS", "HARDWOOD", "WATER", "URBAN", "CONIFER", "AGRICULTURE"),
+  common_name = c("Wrentit", "Western Meadowlark", "Song Sparrow", "Western Sandpiper", 
+                  "White-crowned Sparrow", "Red-breasted Nuthatch", "Red-winged Blackbird")
+)
+
+focal_species <- data.frame(
+  habitat_type = c("SHRUB", "HERBACEOUS", "HARDWOOD", "CONIFER", "AGRICULTURE"),
+  common_name = c("Wrentit", "Western Meadowlark", "Song Sparrow", 
+                  "Red-breasted Nuthatch", "Red-winged Blackbird")
+)
+```
+
+```{r}
+# Function reads the vector and prepares dataframe 
+population_trends <- function(data, species_list) {
+  data %>%
+    inner_join(species_list, by = c("common_name", "habitat_type")) %>%
+    group_by(common_name, year_collected, protection_sts, gap_sts, study_area, survey_type) %>%
+    summarise(total_obs = sum(observation_count, na.rm = TRUE)) %>% 
+    ungroup() %>% 
+    # Center years for models 
+    mutate(year_scaled = year_collected - min(year_collected)) %>% 
+    dplyr::select(common_name, year_collected, year_scaled, total_obs, protection_sts,gap_sts,study_area, survey_type, geometry)
+}
+
+# Apply function to data
+focal_species_data <- population_trends(data = birds_joined, species_list = focal_species)
+
+
+# Explore -- view obs per focal species 
+explore_df <- focal_species_data %>%
+  group_by(common_name) %>%
+  summarize(all_obs = sum(total_obs, na.rm = TRUE))
+
+
+# Where do we have data? 
+years_results <- list()
+
+for (i in unique(focal_species$common_name)) {
+  habitat <- focal_species$habitat_type[focal_species$common_name == i]
+  
+  years_results[[i]]<- birds_joined %>%
+    st_drop_geometry() %>%
+    filter(common_name == i, habitat_type == habitat) %>%
+    group_by(year_collected) %>%
+    summarise(sum_obs = n()) %>% 
+    ungroup() 
+}
+
+years_results[["Wrentit"]] # 1996 - 2024
+years_results[["Western Meadowlark"]] # 1995 - 2016 
+years_results[["Song Sparrow"]] # 1995 - 2024
+years_results[["Western Sandpiper"]] # 1990 - 2022 
+years_results[["White-crowned Sparrow"]] # 1999 - 2024  
+years_results[["Red-breasted Nuthatch"]] # 1996 - 2024
+years_results[["Red-winged Blackbird"]] # 1994 - 2024 
+
+```
+
+```{r}
+# --- Subset data based on survey_type ---- 
+
+focal_species_area <- focal_species_data %>% 
+  filter(survey_type == "Area Search")
+
+focal_species_point <- focal_species_data %>% 
+  filter(survey_type == "Point Count")
+
+# Which species are single-survey method?
+single_survey_spp <- focal_species_data %>%
+  group_by(common_name) %>%
+  summarise(n_survey_types = n_distinct(survey_type)) %>%
+  filter(n_survey_types < 2) %>%
+  pull(common_name)
+
+```
+
+## Diagnostic checks: Model Fit -- No survey subset 
+Negative binomial 1 & 2 vs. poisson 
+```{r}
+# ---- Models for ALL focal species ----
+# Looking at which model suits all focal species first. 
+
+# Poisson model
+model_pois <- glmmTMB(total_obs ~ year_collected + (1|study_area),
+                  family = poisson, data = focal_species_data)
+# Negative binomial 1 model (linear variance to mean)
+model_nb1  <- glmmTMB(total_obs ~ year_collected + (1|study_area),
+                  family = nbinom1(), data = focal_species_data)
+# Negative binomial 2 model (quadratic variance to mean)
+model_nb2  <- glmmTMB(total_obs ~ year_collected + (1|study_area),
+                  family = nbinom2(), data = focal_species_data)
+# Compare model AIC (model fit, lower is better)
+AIC(model_pois, model_nb1, model_nb2) # nbinom2 best model for ALL species
+
+# ---- Check over dispersion with Pearson for model_nb2----
+# Extract Pearson residuals
+pearson_resid <- residuals(model_nb2, type = "pearson")
+
+# Dispersion statistic
+n <- nobs(model_nb2)
+p <- length(fixef(model_nb2)$cond)
+
+dispersion <- sum(pearson_resid^2) / (n - p)
+dispersion
+
+
+# ---- Models per focal species with dispersion parameter (nbinom2) and Pearson stat----
+# Useful to see if the model won't capture variation for some species 
+
+# Initialize lists 
+model_test_results <- list()
+model_diagnostics <- list()
+
+for (i in unique(focal_species_data$common_name)) {
+  species_df <- focal_species_data %>% filter(common_name == i)
+  
+  model_test <- glmmTMB(total_obs ~ year_collected + (1|study_area), 
+                        family = nbinom2, data = species_df)
+  
+  pearson_resid <- residuals(model_test, type = "pearson")
+  n <- nobs(model_test)
+  p <- length(fixef(model_test)$cond)
+  
+  model_test_results[[i]] <- model_test
+  model_diagnostics[[i]] <- data.frame(
+    species = i,
+    dispersion_param = sigma(model_test),
+    pearson = sum(pearson_resid^2) / (n - p)
+  )
+}
+# Turn into dataframe
+diagnostics_df <- bind_rows(model_diagnostics)
+
+# Look at disperson parameters at the species level 
+summary(model_test_results[["Wrentit"]]) # less overdispersion, Poisson may work
+summary(model_test_results[["Western Meadowlark"]]) # less overdispersion, Poisson may work
+summary(model_test_results[["Song Sparrow"]])
+summary(model_test_results[["Western Sandpiper"]]) # high overdispersion
+summary(model_test_results[["White-crowned Sparrow"]])
+summary(model_test_results[["Red-breasted Nuthatch"]]) # less overdispersion, Poisson may work
+summary(model_test_results[["Red-winged Blackbird"]])
+
+
+```
+
+## Diagnostic checks: Model Fit -- Survey subset
+Separate models by survey type so each survey type gets its own effort metric. Why? Area search effort is spatial and point count effort is temporal. Problem: reduces sample sizes per species. 
+
+```{r}
+# ---- Models for ALL focal species ----
+# ---- Area Search ----
+
+survey_df <- list(
+  "Area Search" = focal_species_area,
+  "Point Count" = focal_species_point
+)
+
+survey_diagnostics <- list()
+
+for (i in names(survey_df)) {
+  df <- survey_df[[i]]
+  
+  model_pois <- glmmTMB(total_obs ~ year_collected + (1|study_area),
+                    family = poisson,
+                    data = df)
+  model_nb1  <- glmmTMB(total_obs ~ year_collected + (1|study_area),
+                    family = nbinom1(),
+                    data = df)
+  model_nb2  <- glmmTMB(total_obs ~ year_collected + (1|study_area),
+                    family = nbinom2(),
+                    data = df)
+  
+  survey_diagnostics[[i]] <- data.frame(
+    survey_type = i,
+    aic_pois = AIC(model_pois),
+    aic_nb1 = AIC(model_nb1),
+    aic_nb2  = AIC(model_nb2),
+  )
+}
+
+survey_diagnostics <- bind_rows(survey_diagnostics)
+
+
+# ---- Models per focal species with dispersion parameter (nbinom2) and Pearson stat----
+# Useful to see if the model won't capture variation for some species 
+
+# ---- Area Search -----
+
+# Initialize lists 
+model_test_results <- list()
+model_diagnostics <- list()
+
+for (i in unique(focal_species_area$common_name)) {
+  species_df <- focal_species_data %>% filter(common_name == i)
+  
+  model_test <- glmmTMB(total_obs ~ year_collected + (1|study_area), 
+                        family = nbinom2, data = species_df)
+  
+  pearson_resid <- residuals(model_test, type = "pearson")
+  n <- nobs(model_test)
+  p <- length(fixef(model_test)$cond)
+  
+  model_test_results[[i]] <- model_test
+  model_diagnostics[[i]] <- data.frame(
+    species = i,
+    dispersion_param = sigma(model_test),
+    pearson = sum(pearson_resid^2) / (n - p)
+  )
+}
+# Turn into dataframe
+diagnostics_df <- bind_rows(model_diagnostics)
+
+# ---- Point Count -----
+
+# Initialize lists 
+model_test_results <- list()
+model_diagnostics <- list()
+
+for (i in unique(focal_species_point$common_name)) {
+  species_df <- focal_species_data %>% filter(common_name == i)
+  
+  model_test <- glmmTMB(total_obs ~ year_collected + (1|study_area), 
+                        family = nbinom2, data = species_df)
+  
+  pearson_resid <- residuals(model_test, type = "pearson")
+  n <- nobs(model_test)
+  p <- length(fixef(model_test)$cond)
+  
+  model_test_results[[i]] <- model_test
+  model_diagnostics[[i]] <- data.frame(
+    species = i,
+    dispersion_param = sigma(model_test),
+    pearson = sum(pearson_resid^2) / (n - p)
+  )
+}
+# Turn into dataframe
+diagnostics_df <- bind_rows(model_diagnostics)
+
+```
+
+# Models 
+## Testing workflow: With Offset 
+```{r}
+# Test workflow with one species 
+# ----- Aggregated -----
+wren_trends_ag <- focal_species_data %>% 
+  filter(common_name == "Wrentit") 
+
+# Add site effects for study area for non-independence
+# log(offset(sa))
+# habitat is implicit within this model structure 
+wren_model_ag <- glmmTMB(total_obs ~ year_scaled * protection_sts +
+                           survey_type + offset(log(sample_effort)) +  (1|study_area),
+                         family = nbinom2,
+                         data = wren_trends_ag)
+summary(wren_model_ag)
+
+# ----- Disaggregated ----
+wren_trends_disag <- focal_species_data %>% 
+  filter(common_name == "Wrentit") %>% 
+  select(year_collected, total_obs, gap_sts, study_area)
+
+wren_model_disag <- glmmTMB(total_obs ~ year_collected * gap_sts +
+                              survey_type + offset(log(sample_effort)) + (1|study_area),
+                         family = nbinom2,
+                         data = wren_trends_disag)
+summary(wren_model_disag)
+
+
+```
+## Testing workflow: Without Offset 
+```{r}
+#--------------------------------------------------------------------------------
+
+#-------------------------------Focal Species: Wrentit-------------------------------
+# ----- Aggregated -----
+wren_trends_ag <- focal_species_data %>% 
+  filter(common_name == "Wrentit") 
+
+wren_model_ag <- glmmTMB(total_obs ~ year_scaled * protection_sts +
+                           survey_type +  (1|study_area),
+                         family = nbinom2,
+                         data = wren_trends_ag)
+summary(wren_model_ag)
+
+# ----- Disaggregated ----
+wren_trends_disag <- focal_species_data %>% 
+  filter(common_name == "Wrentit") 
+
+wren_model_disag <- glmmTMB(total_obs ~ year_scaled * gap_sts +
+                              survey_type + (1|study_area),
+                         family = nbinom2,
+                         data = wren_trends_disag)
+summary(wren_model_disag)
+
+```
+## Test Autocorrelation
+```{r}
+# Your inputs would look like:
+models <- list(wren = list(all = wren_model_ag))  # dummy habitat level
+model_data_map <- list(wren = wren_trends_ag %>%
+                         mutate(habitat_type = "all"))  # dummy to satisfy filter
+                            
+habitats <- "all"
+
+run_spatial_temporal_tests(models, model_data_map, habitats)
+
+```
+
+## Models -- Aggregated/Protection 
+```{r}
+
+# Define list 
+results_ag <- list()
+
+# Loop through all species and fit models 
+for (sp in unique(focal_species_data$common_name)) {
+  species_df <- focal_species_data %>% filter(common_name == sp)
+  
+  # If single-species -- run model w/o survey type
+   if (n_distinct(species_df$survey_type) < 2) {
+    species_model <- glmmTMB(total_obs ~ year_scaled * protection_sts + (1|study_area),
+                             family = nbinom2, data = species_df)
+  } else {
+    species_model <- glmmTMB(total_obs ~ year_scaled * protection_sts + survey_type + (1|study_area),
+                             family = nbinom2, data = species_df)
+  }
+  
+  results_ag[[sp]] <- species_model
+}
+
+
+# Access model results 
+summary(results_ag[["Wrentit"]]) 
+summary(results_ag[["Western Meadowlark"]]) 
+summary(results_ag[["Song Sparrow"]])
+#summary(results_ag[["Western Sandpiper"]])
+#summary(results_ag[["White-crowned Sparrow"]])
+summary(results_ag[["Red-breasted Nuthatch"]])
+summary(results_ag[["Red-winged Blackbird"]])
+
+```
+
+## Models -- Disaggregated/GAP
+```{r}
+# Define list 
+results_disag <- list()
+
+# Loop through all species and fit models 
+for (sp in unique(focal_species_data$common_name)) {
+  species_df <- focal_species_data %>% filter(common_name == sp)
+  
+  # If single-species -- run model w/o survey type
+  if (n_distinct(species_df$survey_type) < 2) {
+    species_model <- glmmTMB(total_obs ~ year_scaled * gap_sts + (1|study_area),
+                             family = nbinom2, data = species_df)
+  } else {
+    species_model <- glmmTMB(total_obs ~ year_collected * gap_sts + survey_type + (1|study_area),
+                             family = nbinom2, data = species_df)
+  }
+  
+  results_disag[[sp]] <- species_model
+}
+
+
+# Access model results 
+summary(results_disag[["Wrentit"]]) 
+summary(results_disag[["Western Meadowlark"]]) 
+summary(results_disag[["Song Sparrow"]])
+#summary(results_disag[["Western Sandpiper"]])
+#summary(results_disag[["White-crowned Sparrow"]])
+summary(results_disag[["Red-breasted Nuthatch"]])
+summary(results_disag[["Red-winged Blackbird"]])
+
+```
+
+
+## Model results 
+
+```{r}
+point_count 
+```
+
+
