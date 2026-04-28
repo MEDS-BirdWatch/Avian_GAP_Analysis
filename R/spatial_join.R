@@ -169,8 +169,8 @@ birds_joined <- birds_joined %>%
     TRUE~ 'protected'
   )) %>% 
   # Sample Effort 
-  group_by(year_collected, parent_sampling_unit_id) %>%
-  mutate(sample_effort = sum(abs(survey_duration[!duplicated(sampling_unit_id)]))) %>%
+  group_by(year_collected, study_area, sampling_unit_id) %>%
+  mutate(sample_effort = abs(survey_duration)) %>%
   ungroup() %>% 
   mutate(gap_sts = as.numeric(gap_sts))
 
