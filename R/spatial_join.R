@@ -15,7 +15,9 @@ library(sfarrow) #0.4.1
 #-------------------------------------------------------------------------------
 
 #---------------------Create Processed data folder (if none exists)------------
-ifelse(dir.exists(here("data","data_processed")),print("Directory: data_processed exists"), dir.create(here("data","data_processed")))
+ifelse(dir.exists(here("data", "data_processed")),
+       print("Directory: data_processed exists"),
+       dir.create(here("data", "data_processed")))
 
 #-------------------------------------------------------------------------------  
 
@@ -128,12 +130,12 @@ point_count <- read_csv(here::here('data', 'point_count.csv')) %>%
     protocol_code == 'FR50_T10' ~ 10,
     TRUE ~ 5
   )) %>% 
-  select(global_unique_identifier, project_code, project_name, study_area, protocol_code, observation_date, year_collected, month_collected, survey_duration, scientific_name, common_name, species_code, observation_count, survey_type,sampling_unit_id, parent_sampling_unit_id, decimal_latitude, decimal_longitude)
+  select(global_unique_identifier, project_code, project_name, study_area, protocol_code, observation_date, year_collected, month_collected, survey_duration, scientific_name, common_name, species_code, observation_count, survey_type, sampling_unit_id, decimal_latitude, decimal_longitude)
 
 area_search <- read_csv(here::here('data', 'area_search.csv')) %>% 
   clean_names() %>% 
   mutate(survey_type = 'Area Search') %>% 
-  select(global_unique_identifier, project_code, project_name, study_area, protocol_code, observation_date, year_collected, month_collected, survey_duration, scientific_name, common_name, species_code, observation_count, survey_type, sampling_unit_id, parent_sampling_unit_id, decimal_latitude, decimal_longitude)
+  select(global_unique_identifier, project_code, project_name, study_area, protocol_code, observation_date, year_collected, month_collected, survey_duration, scientific_name, common_name, species_code, observation_count, survey_type, sampling_unit_id, decimal_latitude, decimal_longitude)
 
 point_area_geo <- bind_rows(area_search, point_count) %>% 
   st_as_sf(coords = c("decimal_longitude", "decimal_latitude"), crs = 4326) %>% 
@@ -152,7 +154,15 @@ area_intersection <- area_intersection %>%
 
 #------------------------------Spatial Join-------------------------------------
 # Join objects 
- 
+birds_joined <- st_join(point_area_geo, gap_clean["gap_sts"])
+
+# Match vector 
+habitat_id <- terra::extract(habitat_type, vect(birds_joined), ID = FALSE)[,1]
+
+birds_joined$habitat_type <- habitat_id
+
+birds_joined <- left_join(birds_joined, area_intersection) %>% 
+  filter(habitat_type != 'BARREN/OTHER')
 
 # Remove demo and test codes
 
@@ -168,9 +178,12 @@ birds_joined <- birds_joined %>%
     gap_sts %in% c(3,4,5) ~ 'unprotected',
     TRUE~ 'protected'
   )) %>% 
-  # Sample Effort 
-  group_by(year_collected, study_area, sampling_unit_id) %>%
-  mutate(sample_effort = abs(survey_duration)) %>%
+  # Sample Effort ----
+  group_by(year_collected, study_area) %>%
+  # Select one duration per unique visit (!duplicated() returns TRUE for the first
+  # occurrence of each sampling_unit_id)
+  # Take abs value for negative survey duration 
+  mutate(sample_effort = sum(abs(survey_duration[!duplicated(sampling_unit_id)]))) %>% 
   ungroup() %>% 
   mutate(gap_sts = as.numeric(gap_sts))
 
