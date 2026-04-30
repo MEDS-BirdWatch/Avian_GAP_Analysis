@@ -1,0 +1,150 @@
+---
+title: "technical_memo_figures"
+format: html
+---
+
+## Load data and packages 
+```{r}
+library(sfarrow)
+library(tidyverse)
+library(here)
+library(sf)
+library(terra)
+library(tigris)
+
+birds_joined <- st_read_parquet(here('data', 'data_processed', 'birds_joined.parquet'))
+```
+
+## Observations by year
+
+```{r}
+# Where the data are, when, habitat and Gap? 
+
+ggplot(birds_joined, aes(x = year_collected, y = sum(observation_count, na.rm = TRUE)))+
+  geom_col()+
+  theme_linedraw()+
+  labs(y = 'Observations', 
+       x = 'Year', 
+       title = 'Observations by Year')
+```
+
+Observations by year with density and area search/ point count 
+
+```{r}
+ggplot(birds_joined, aes(x = year_collected, y = sum(observation_count, na.rm = TRUE)))+
+  geom_area(aes(fill = survey_type), alpha = .5)+
+  theme_linedraw()+
+  labs(y = 'Observations', 
+       x = 'Year', 
+       title = 'Observations by Year',
+       fill = 'Survey Type')
+```
+
+
+## Observations by gap status
+
+```{r}
+ggplot(birds_joined, aes(x = gap_sts, y = sum(observation_count, na.rm = TRUE)))+
+  geom_col()+
+  theme_linedraw()+
+  labs(y = 'Observations', 
+       x = 'GAP Status', 
+       title = 'Observations by GAP Status')
+```
+
+## Obseevations by habitat type
+
+```{r}
+birds_sum <- birds_joined %>% 
+  group_by(gap_sts, habitat_type) %>% 
+  summarize(observations = sum(observation_count, na.rm = TRUE)) %>% 
+ arrange(desc(observations)) 
+
+birds_sum %>% 
+  st_drop_geometry() %>% 
+  filter(!habitat_type %in% NA) %>% 
+  group_by(habitat_type) %>% 
+  summarise(total_obs = sum(observations)) %>% 
+  arrange(desc(total_obs)) %>% 
+  ggplot(aes(y = total_obs, x = reorder(habitat_type, total_obs))) +
+   geom_col(fill = 'lightblue',
+            color = 'black')+
+  labs(y = 'Observations',
+       x = 'Vegetation Type')+
+  coord_flip()+
+  theme_minimal()
+```
+
+## Observations by county 
+```{r}
+counties <- st_read(here::here('data','tl_2025_us_county', 
+                               'tl_2025_us_county.shp')) %>% 
+  clean_names() %>% 
+  filter(statefp == '06') %>% 
+  mutate(area = (aland+awater)* 1e-6) %>% 
+  select(namelsad, area) %>% 
+  st_transform(crs(birds_joined))
+
+point_area_obs <- test %>% 
+  select(observation_count) 
+  
+
+point_area_county <- st_join(counties, point_area_obs) %>% 
+  st_drop_geometry() %>% 
+  group_by(namelsad) %>% 
+  summarize(total_observations = sum(observation_count))
+
+
+point_area_county$total_observations[is.na(point_area_county$total_observations)] <-  0
+
+county_obs <- left_join(counties, point_area_county,
+                        by = 'namelsad')
+
+county_obs <- county_obs %>% 
+  group_by(namelsad) %>% 
+  summarize(density = total_observations/area,
+            total_obs = total_observations)
+
+bluegreen <- colorRampPalette(colors = c('#4595D1', '#73B843'), bias = .5, space = 'Lab')
+
+ggplot(county_obs)+
+  geom_sf(aes(fill = density))+
+  scale_fill_gradientn(colors = bluegreen(100))+
+  theme_void()+
+  labs(fill = expression(frac('Observations','County Area ')),
+       title = 'Observations by County Area')
+```
+
+```{r}
+other_names <- county_obs %>% 
+  filter(total_obs == 0) %>% 
+  st_drop_geometry() %>% 
+  pull(namelsad)
+
+county_obs_corrected <- county_obs %>% 
+  filter(total_obs>0)
+
+county_obs_corrected %>% 
+  st_drop_geometry() %>% 
+  arrange(desc(density))%>%
+  rename('County Name' = namelsad,
+         'Density' = density,
+         'Total Observations' = total_obs) %>% 
+  kable(format = "html", digits = 3, longtable = TRUE) %>% 
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+    full_width = FALSE,
+    position = "center",
+    font_size = 14
+  ) %>% 
+  footnote(general = paste("Dropped:", 
+                           paste(other_names, collapse = ", "), 
+                           'due to lack of observations')) %>% 
+  row_spec(0, bold = TRUE, color = "black", background = "#4392CE") %>%
+  row_spec(seq(1, nrow(county_obs_corrected), 2), 
+           color = "black", 
+           background = "#74B444") %>%
+  row_spec(seq(2, nrow(county_obs_corrected), 2), color = "black", background = "#A8D175")%>%
+  save_kable(here::here('Outputs', 'figures', "county_density_table.png"), zoom = 4)
+```
+

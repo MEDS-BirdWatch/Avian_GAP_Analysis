@@ -343,6 +343,22 @@ gtsave(disagg_gt, here::here("Outputs", "figures", "disagg_gt_table.png"), zoom 
 
 Sample models
 ```{r}
+ca_boundary <- states( cb = TRUE, class = "sf") %>% 
+  filter(STUSPS == 'CA') %>% 
+  st_transform(crs = st_crs(birds_joined))
+
+
+grid_sf <- ca_boundary %>% 
+  st_make_grid(cellsize = units::set_units(600, m)) %>% 
+  st_intersection(ca_boundary) %>% 
+  # st_intersection returns geometry column, 
+  # convert to sf so it could store cell_id attribute
+  st_as_sf() %>% 
+  st_set_geometry("geometry") %>% 
+  # factor : for more convenient ggplot viz 
+  mutate(cell_id = as.factor(row_number())) %>% 
+  st_transform(crs = "WGS84")
+
 set.seed(76)
 
 sample_biodiv_area_search_agg <- birds_joined %>% 
@@ -350,7 +366,9 @@ sample_biodiv_area_search_agg <- birds_joined %>%
     gini_simpson()%>% 
     mutate(protection = ifelse(gap_sts %in% c(1,2), 
                                'Protected', 'Non-protected')) %>% 
-    slice_sample(prop = sample)
+    st_transform(crs = "WGS84") %>% 
+    st_join(grid_sf, left = FALSE) %>% 
+    slice_sample(n = 1, by = c(cell_id, year_collected))
   
   sample_area_agg <- fit_agg(sample_biodiv_area_search_agg)
   
@@ -359,7 +377,9 @@ sample_biodiv_area_search_agg <- birds_joined %>%
     gini_simpson() %>%
     mutate(protection = ifelse(gap_sts %in% c(1,2), 
                                'Protected', 'Non-protected'))%>% 
-    slice_sample(prop = sample)
+    st_transform(crs = "WGS84") %>% 
+    st_join(grid_sf, left = FALSE) %>% 
+    slice_sample(n = 1, by = c(cell_id, year_collected))
   
   sample_point_agg <- fit_agg(sample_biodiv_point_count_agg)
   
@@ -367,7 +387,9 @@ sample_biodiv_area_search_agg <- birds_joined %>%
     mutate(gap_sts = as.numeric(gap_sts)) %>% 
     filter(survey_type %in% "Area Search") %>% 
     gini_simpson() %>% 
-    slice_sample(prop = sample)
+    st_transform(crs = "WGS84") %>% 
+    st_join(grid_sf, left = FALSE) %>% 
+    slice_sample(n = 1, by = c(cell_id, year_collected))
   
   sample_area_disag <- fit_disagg(sample_biodiv_area_search_disag) 
   
@@ -375,7 +397,9 @@ sample_biodiv_area_search_agg <- birds_joined %>%
     mutate(gap_sts = as.numeric(gap_sts)) %>% 
     filter(survey_type %in% "Point Count") %>% 
     gini_simpson() %>% 
-    slice_sample(prop = sample)
+    st_transform(crs = "WGS84") %>% 
+    st_join(grid_sf, left = FALSE) %>% 
+    slice_sample(n = 1, by = c(cell_id, year_collected))
   
  sample_point_disag <- fit_disagg(sample_biodiv_point_count_disag)
   
@@ -384,7 +408,9 @@ sample_biodiv_area_search_agg <- birds_joined %>%
     gini_simpson() %>% 
     mutate(protection = ifelse(gap_sts %in% c(1,2), 
                                'Protected', 'Non-protected'))%>% 
-    slice_sample(prop = sample)
+    st_transform(crs = "WGS84") %>% 
+    st_join(grid_sf, left = FALSE) %>% 
+    slice_sample(n = 1, by = c(cell_id, year_collected))
   
   sample_bird_summary <- fit_agg(sample_birds_rich)
   
@@ -414,7 +440,7 @@ sample_spatial_temporal_tests <- run_spatial_temporal_tests(
   habitats       = habitats
 )
 
-print(sample_spatial_temporal_tests, n = 38)
+sample_spatial_temporal_tests
 ```
 
 Adjust models
