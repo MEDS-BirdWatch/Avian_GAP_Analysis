@@ -31,7 +31,7 @@ source(here('R', 'rich_gini.R'))
 set.seed(76)
 sample = .8
 
-birds_joined <- st_read_parquet(here('data', 'data_processed','birds_joined.parquet'))
+birds_joined <- st_read_parquet(here('data', 'data_processed', 'birds_joined.parquet'))
 
 habitats <- unique(birds_joined$habitat_type)
 ```
@@ -349,7 +349,7 @@ ca_boundary <- states( cb = TRUE, class = "sf") %>%
 
 
 grid_sf <- ca_boundary %>% 
-  st_make_grid(cellsize = units::set_units(600, m)) %>% 
+  st_make_grid(cellsize = units::set_units(1200, m)) %>% 
   st_intersection(ca_boundary) %>% 
   # st_intersection returns geometry column, 
   # convert to sf so it could store cell_id attribute

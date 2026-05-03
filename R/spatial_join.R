@@ -177,15 +177,23 @@ birds_joined <- birds_joined %>%
   mutate(protection_sts = case_when(
     gap_sts %in% c(3,4,5) ~ 'unprotected',
     TRUE~ 'protected'
-  )) %>% 
+  ))
+  
   # Sample Effort ----
+geom <- st_geometry(birds_joined)
+
+birds_joined <- birds_joined %>%
+  st_drop_geometry() %>%
   group_by(year_collected, study_area) %>%
-  # Select one duration per unique visit (!duplicated() returns TRUE for the first
-  # occurrence of each sampling_unit_id)
-  # Take abs value for negative survey duration 
-  mutate(sample_effort = sum(abs(survey_duration[!duplicated(sampling_unit_id)]))) %>% 
-  ungroup() %>% 
-  mutate(gap_sts = as.numeric(gap_sts))
+  mutate(sample_effort = case_when(
+    survey_type == "Area Search" ~ 1,
+    TRUE ~ sum(abs(survey_duration[!duplicated(sampling_unit_id)]))
+  )) %>%
+  ungroup()
+
+birds_joined$geometry <- geom
+birds_joined <- st_as_sf(birds_joined)
+
 
 
 # Write st data to parquet
