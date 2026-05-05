@@ -31,7 +31,7 @@ SHRUB <- "#F7A54B"
 URBAN <- "#595959"
 WATER <- "#8EBEE2"
 AGRICULTURE <- "#B5727A"
-BARREN/OTHER <- "#FF72DE"
+BARREN <- "#FF72DE"
 
 point_blue_theme <- function() {
   # Base theme light
