@@ -11,8 +11,18 @@ library(here)
 library(sf)
 library(terra)
 library(tigris)
+library(tidyterra)
+library(tmap)
+library(janitor)
+library(paletteer)
+library(patchwork)
+library(showtext)
 
 birds_joined <- st_read_parquet(here('data', 'data_processed', 'birds_joined.parquet'))
+
+source(here("R", "point_blue_theme.R"))
+showtext_auto(enable = TRUE)
+
 ```
 
 ## Observations by year
@@ -25,54 +35,93 @@ ggplot(birds_joined, aes(x = year_collected, y = sum(observation_count, na.rm = 
   theme_linedraw()+
   labs(y = 'Observations', 
        x = 'Year', 
-       title = 'Observations by Year')
+       title = 'Observations by Year')+
+  point_blue_theme()
 ```
 
 Observations by year with density and area search/ point count 
 
 ```{r}
-ggplot(birds_joined, aes(x = year_collected, y = sum(observation_count, na.rm = TRUE)))+
-  geom_area(aes(fill = survey_type), alpha = .5)+
-  theme_linedraw()+
-  labs(y = 'Observations', 
-       x = 'Year', 
-       title = 'Observations by Year',
-       fill = 'Survey Type')
+
+birds_joined %>%
+  group_by(year_collected, survey_type) %>%
+  summarise(observations = sum(observation_count, na.rm = TRUE), .groups = "drop") %>%
+  ggplot(aes(
+    x = year_collected,
+    y = observations,
+    color = survey_type,
+    fill = survey_type,
+    group = survey_type
+  )) +
+  geom_line() +
+  geom_area(alpha = 0.5, position = "identity") +
+  scale_fill_manual(values = c(point_blue, point_green)) +
+  scale_color_manual(values = c(point_blue, point_green)) +
+  scale_x_continuous(expand = c(0, 0)) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    label = scales::comma,
+    limits = c(0, NA)
+  ) +
+  labs(
+    title = "Avian Knowledge Network Bird Observations Over Time",
+    subtitle = "Point count data is densely clustered 1995-2005",
+    y = "Number of observations",
+    x = NULL
+  ) +
+  point_blue_theme()
+
+
 ```
 
 
 ## Observations by gap status
 
 ```{r}
-ggplot(birds_joined, aes(x = gap_sts, y = sum(observation_count, na.rm = TRUE)))+
-  geom_col()+
-  theme_linedraw()+
+birds_joined %>% 
+  group_by(gap_sts, survey_type) %>% 
+  summarise(observations = sum(observation_count, na.rm = TRUE), .groups = "drop") %>% 
+ggplot(aes(x = gap_sts, y = observations, color = survey_type,
+    fill = survey_type,
+    group = survey_type))+
+  geom_col(position = "dodge")+
+  scale_fill_manual(values = c(point_blue, point_green)) +
+  scale_color_manual(values = c(point_blue, point_green)) +
+  scale_y_continuous(
+    expand = c(0, 0),
+    label = scales::comma) +
   labs(y = 'Observations', 
        x = 'GAP Status', 
-       title = 'Observations by GAP Status')
+       title = 'Observations by GAP Status') +
+  point_blue_theme() +
+  annotate("segment", x = 6, xend = 6, y = 20000, yend = 170000) +
+  annotate(geom = "text",
+          x = 6, 
+          y = 250000, 
+          label = "observations \nin open water", 
+          family = "lib_frank",
+          size = 5
+          )
+
 ```
 
-## Obseevations by habitat type
+## Observations by habitat type
 
 ```{r}
-birds_sum <- birds_joined %>% 
-  group_by(gap_sts, habitat_type) %>% 
-  summarize(observations = sum(observation_count, na.rm = TRUE)) %>% 
- arrange(desc(observations)) 
-
-birds_sum %>% 
-  st_drop_geometry() %>% 
-  filter(!habitat_type %in% NA) %>% 
-  group_by(habitat_type) %>% 
-  summarise(total_obs = sum(observations)) %>% 
-  arrange(desc(total_obs)) %>% 
-  ggplot(aes(y = total_obs, x = reorder(habitat_type, total_obs))) +
-   geom_col(fill = 'lightblue',
-            color = 'black')+
-  labs(y = 'Observations',
-       x = 'Vegetation Type')+
-  coord_flip()+
-  theme_minimal()
+birds_joined %>% 
+  group_by(habitat_type, survey_type) %>% 
+  summarise(observations = sum(observation_count, na.rm = TRUE), .groups = "drop") %>% 
+  mutate(habitat_type = reorder(habitat_type, observations)) %>% 
+  ggplot(aes(x = observations, y = habitat_type, fill = habitat_type)) +
+  geom_col() +
+  scale_x_continuous(label = scales::comma) +
+  scale_fill_manual(values = c(URBAN, AGRICULTURE, CONIFER, HERBACEOUS, SHRUB, HARDWOOD, WATER)) +
+  scale_color_manual(values = c(URBAN, AGRICULTURE, CONIFER, HERBACEOUS, SHRUB, HARDWOOD, WATER)) +
+  point_blue_theme() +
+  theme(legend.position = "none") +
+  labs(y = 'Observations', 
+       x = 'Habitat Type', 
+       title = 'Observations by Habitat')
 ```
 
 ## Observations by county 
