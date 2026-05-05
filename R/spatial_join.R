@@ -130,12 +130,19 @@ point_count <- read_csv(here::here('data', 'point_count.csv')) %>%
     protocol_code == 'FR50_T10' ~ 10,
     TRUE ~ 5
   )) %>% 
-  select(global_unique_identifier, project_code, project_name, study_area, protocol_code, observation_date, year_collected, month_collected, survey_duration, scientific_name, common_name, species_code, observation_count, survey_type, sampling_unit_id, decimal_latitude, decimal_longitude)
+  select(global_unique_identifier, project_code, project_name, study_area, protocol_code, observation_date, year_collected, month_collected, survey_duration, scientific_name, common_name, species_code, observation_count, survey_type, sampling_unit_id, decimal_latitude, decimal_longitude) %>% 
+  group_by(year_collected, study_area) %>%
+  mutate(sample_effort = sum(abs(survey_duration[!duplicated(sampling_unit_id)]))) %>% 
+  ungroup()
+  
 
 area_search <- read_csv(here::here('data', 'area_search.csv')) %>% 
   clean_names() %>% 
   mutate(survey_type = 'Area Search') %>% 
-  select(global_unique_identifier, project_code, project_name, study_area, protocol_code, observation_date, year_collected, month_collected, survey_duration, scientific_name, common_name, species_code, observation_count, survey_type, sampling_unit_id, decimal_latitude, decimal_longitude)
+  select(global_unique_identifier, project_code, project_name, study_area, protocol_code, observation_date, year_collected, month_collected, survey_duration, scientific_name, common_name, species_code, observation_count, survey_type, sampling_unit_id, decimal_latitude, decimal_longitude) %>% 
+  group_by(year_collected, study_area) %>%
+  mutate(sample_effort = 1) %>% 
+  ungroup()
 
 point_area_geo <- bind_rows(area_search, point_count) %>% 
   st_as_sf(coords = c("decimal_longitude", "decimal_latitude"), crs = 4326) %>% 
@@ -180,19 +187,19 @@ birds_joined <- birds_joined %>%
   ))
   
   # Sample Effort ----
-geom <- st_geometry(birds_joined)
-
-birds_joined <- birds_joined %>%
-  st_drop_geometry() %>%
-  group_by(year_collected, study_area) %>%
-  mutate(sample_effort = case_when(
-    survey_type == "Area Search" ~ 1,
-    TRUE ~ sum(abs(survey_duration[!duplicated(sampling_unit_id)]))
-  )) %>%
-  ungroup()
-
-birds_joined$geometry <- geom
-birds_joined <- st_as_sf(birds_joined)
+# geom <- st_geometry(birds_joined)
+# 
+# birds_joined <- birds_joined %>%
+#   st_drop_geometry() %>%
+#   group_by(year_collected, study_area) %>%
+#   mutate(sample_effort = case_when(
+#     survey_type == "Area Search" ~ 1,
+#     TRUE ~ sum(abs(survey_duration[!duplicated(sampling_unit_id)]))
+#   )) %>%
+#   ungroup()
+# 
+# birds_joined$geometry <- geom
+# birds_joined <- st_as_sf(birds_joined)
 
 
 
