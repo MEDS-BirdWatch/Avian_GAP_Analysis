@@ -6,10 +6,10 @@ format: html
 In this workflow we will perform the following:
 1. Define our focal species from our `indicator_analysis.qmd` workflow. The species produced in the `focal_species` dataframe were then sent to Point Blue staff scientists for further guidance on determining our focal species. 
 2. Run model fit diagnoist checks for 1) all focal species (no survey subset) 2) all focal species (survey subset). 
-3. Figure out sampling effort: 1) Bin data across 2-5 years 2) quantify survey effort
 3. Run GLMMM model for aggregated data where protection status is determined by protected (GAP status 1 - 2) and unprotected (GAP status 3-5). Summarize results with {gt} summary. 
 4. Run GLMM model for disaggregated data with all GAP status protection levels. Summarize results with {gt} summary. 
 5. Look into autocorrelation of results. 
+6. Visualize trends. 
 
 
 ```{r}
@@ -19,13 +19,17 @@ library(tidyverse)
 library(here)
 library(glmmTMB)
 library(gtsummary)
+library(gt)
 library(sf)
 library(sfarrow)
 library(lmtest)
+library(spdep)
+library(broom.mixed)
+library(ggplot2)
 
 
 # Source function
-source(here("R", "population_trend.R")) # UPDATE
+source(here("R", "population_trend.R")) 
 
 source(here("R", "autocorrelation_tests.R"))
 
@@ -37,15 +41,24 @@ birds_joined <- st_read_parquet(here("data","data_processed","birds_joined.parqu
 ```{r}
 # Data Frame of focal species 
 focal_species <- data.frame(
-  habitat_type = c("SHRUB", "HERBACEOUS", "HARDWOOD", "WATER", "URBAN", "CONIFER", "AGRICULTURE"),
-  common_name = c("Wrentit", "Western Meadowlark", "Song Sparrow", "Western Sandpiper", 
-                  "White-crowned Sparrow", "Red-breasted Nuthatch", "Red-winged Blackbird")
-)
-
-focal_species <- data.frame(
-  habitat_type = c("SHRUB", "HERBACEOUS", "HARDWOOD", "CONIFER", "AGRICULTURE"),
-  common_name = c("Wrentit", "Western Meadowlark", "Song Sparrow", 
-                  "Red-breasted Nuthatch", "Red-winged Blackbird")
+  habitat_type = c(
+    "SHRUB",
+    "HERBACEOUS",
+    "HARDWOOD",
+    "WATER",
+    "URBAN",
+    "CONIFER",
+    "AGRICULTURE"
+  ),
+  common_name = c(
+    "Wrentit",
+    "Western Meadowlark",
+    "Song Sparrow",
+    "Western Sandpiper",
+    "White-crowned Sparrow",
+    "Red-breasted Nuthatch",
+    "Red-winged Blackbird"
+  )
 )
 ```
 
@@ -54,48 +67,20 @@ focal_species <- data.frame(
 population_trends <- function(data, species_list) {
   data %>%
     inner_join(species_list, by = c("common_name", "habitat_type")) %>%
-    group_by(common_name, year_collected, protection_sts, gap_sts, study_area, survey_type) %>%
+    group_by(common_name, year_collected, protection_sts, gap_sts, study_area, survey_type, sample_effort, geometry) %>%
     summarise(total_obs = sum(observation_count, na.rm = TRUE)) %>% 
     ungroup() %>% 
     # Center years for models 
     mutate(year_scaled = year_collected - min(year_collected)) %>% 
-    dplyr::select(common_name, year_collected, year_scaled, total_obs, protection_sts,gap_sts,study_area, survey_type, geometry)
+    dplyr::select(common_name, year_collected, year_scaled, year_collected, total_obs, protection_sts,gap_sts,study_area, survey_type, sample_effort, geometry)
 }
 
 # Apply function to data
 focal_species_data <- population_trends(data = birds_joined, species_list = focal_species)
 
-
-# Explore -- view obs per focal species 
-explore_df <- focal_species_data %>%
-  group_by(common_name) %>%
-  summarize(all_obs = sum(total_obs, na.rm = TRUE))
-
-
-# Where do we have data? 
-years_results <- list()
-
-for (i in unique(focal_species$common_name)) {
-  habitat <- focal_species$habitat_type[focal_species$common_name == i]
-  
-  years_results[[i]]<- birds_joined %>%
-    st_drop_geometry() %>%
-    filter(common_name == i, habitat_type == habitat) %>%
-    group_by(year_collected) %>%
-    summarise(sum_obs = n()) %>% 
-    ungroup() 
-}
-
-years_results[["Wrentit"]] # 1996 - 2024
-years_results[["Western Meadowlark"]] # 1995 - 2016 
-years_results[["Song Sparrow"]] # 1995 - 2024
-years_results[["Western Sandpiper"]] # 1990 - 2022 
-years_results[["White-crowned Sparrow"]] # 1999 - 2024  
-years_results[["Red-breasted Nuthatch"]] # 1996 - 2024
-years_results[["Red-winged Blackbird"]] # 1994 - 2024 
-
 ```
 
+## Diagnostic checks: Model Fit -- No survey subset 
 ```{r}
 # --- Subset data based on survey_type ---- 
 
@@ -114,7 +99,6 @@ single_survey_spp <- focal_species_data %>%
 
 ```
 
-## Diagnostic checks: Model Fit -- No survey subset 
 Negative binomial 1 & 2 vs. poisson 
 ```{r}
 # ---- Models for ALL focal species ----
@@ -279,18 +263,15 @@ diagnostics_df <- bind_rows(model_diagnostics)
 ```
 
 # Models 
-## Testing workflow: With Offset 
+## Testing workflow
 ```{r}
 # Test workflow with one species 
 # ----- Aggregated -----
 wren_trends_ag <- focal_species_data %>% 
   filter(common_name == "Wrentit") 
 
-# Add site effects for study area for non-independence
-# log(offset(sa))
-# habitat is implicit within this model structure 
 wren_model_ag <- glmmTMB(total_obs ~ year_scaled * protection_sts +
-                           survey_type + offset(log(sample_effort)) +  (1|study_area),
+                           offset(log(sample_effort)) +  (1|study_area),
                          family = nbinom2,
                          data = wren_trends_ag)
 summary(wren_model_ag)
@@ -301,88 +282,63 @@ wren_trends_disag <- focal_species_data %>%
   select(year_collected, total_obs, gap_sts, study_area)
 
 wren_model_disag <- glmmTMB(total_obs ~ year_collected * gap_sts +
-                              survey_type + offset(log(sample_effort)) + (1|study_area),
+                              offset(log(sample_effort)) + (1|study_area),
                          family = nbinom2,
                          data = wren_trends_disag)
 summary(wren_model_disag)
-
-
-```
-## Testing workflow: Without Offset 
-```{r}
-#--------------------------------------------------------------------------------
-
-#-------------------------------Focal Species: Wrentit-------------------------------
-# ----- Aggregated -----
-wren_trends_ag <- focal_species_data %>% 
-  filter(common_name == "Wrentit") 
-
-wren_model_ag <- glmmTMB(total_obs ~ year_scaled * protection_sts +
-                           survey_type +  (1|study_area),
-                         family = nbinom2,
-                         data = wren_trends_ag)
-summary(wren_model_ag)
-
-# ----- Disaggregated ----
-wren_trends_disag <- focal_species_data %>% 
-  filter(common_name == "Wrentit") 
-
-wren_model_disag <- glmmTMB(total_obs ~ year_scaled * gap_sts +
-                              survey_type + (1|study_area),
-                         family = nbinom2,
-                         data = wren_trends_disag)
-summary(wren_model_disag)
-
-```
-## Test Autocorrelation
-```{r}
-# Your inputs would look like:
-models <- list(wren = list(all = wren_model_ag))  # dummy habitat level
-model_data_map <- list(wren = wren_trends_ag %>%
-                         mutate(habitat_type = "all"))  # dummy to satisfy filter
-                            
-habitats <- "all"
-
-run_spatial_temporal_tests(models, model_data_map, habitats)
 
 ```
 
 ## Models -- Aggregated/Protection 
 ```{r}
-
 # Define list 
 results_ag <- list()
 
 # Loop through all species and fit models 
 for (sp in unique(focal_species_data$common_name)) {
   species_df <- focal_species_data %>% filter(common_name == sp)
-  
-  # If single-species -- run model w/o survey type
-   if (n_distinct(species_df$survey_type) < 2) {
-    species_model <- glmmTMB(total_obs ~ year_scaled * protection_sts + (1|study_area),
+
+    species_model <- glmmTMB(total_obs ~ year_scaled * protection_sts  + (1|study_area) + offset(log(sample_effort)),
                              family = nbinom2, data = species_df)
-  } else {
-    species_model <- glmmTMB(total_obs ~ year_scaled * protection_sts + survey_type + (1|study_area),
-                             family = nbinom2, data = species_df)
-  }
   
   results_ag[[sp]] <- species_model
 }
 
 
-# Access model results 
+# ---- Access model results ----
 summary(results_ag[["Wrentit"]]) 
 summary(results_ag[["Western Meadowlark"]]) 
 summary(results_ag[["Song Sparrow"]])
-#summary(results_ag[["Western Sandpiper"]])
-#summary(results_ag[["White-crowned Sparrow"]])
+summary(results_ag[["White-crowned Sparrow"]])
 summary(results_ag[["Red-breasted Nuthatch"]])
 summary(results_ag[["Red-winged Blackbird"]])
+summary(results_ag[["Western Sandpiper"]])
+
+# ---- Test Autocorrelation ----
+set.seed(411)
+
+model_data_map <- list()
+for (sp in names(results_ag)) {
+  model_data_map[[sp]] <- focal_species_data %>% 
+    filter(common_name == sp) %>%
+    mutate(habitat_type = "all")
+}
+
+models <- lapply(results_ag, function(m) list(all = m))
+
+run_spatial_temporal_tests(models, model_data_map, habitats = "all")
+
 
 ```
-
+- Song sparrow and Western Meadowlark show the most spatial autocorrelation 
 ## Models -- Disaggregated/GAP
+
 ```{r}
+# What are the number ofobservations per species per GAp level?
+gap_data <- focal_species_data %>% 
+  st_drop_geometry() %>%
+  count(common_name, gap_sts)
+
 # Define list 
 results_disag <- list()
 
@@ -390,35 +346,279 @@ results_disag <- list()
 for (sp in unique(focal_species_data$common_name)) {
   species_df <- focal_species_data %>% filter(common_name == sp)
   
-  # If single-species -- run model w/o survey type
-  if (n_distinct(species_df$survey_type) < 2) {
-    species_model <- glmmTMB(total_obs ~ year_scaled * gap_sts + (1|study_area),
+    species_model <- glmmTMB(total_obs ~ year_collected * factor(gap_sts) + (1|study_area) + offset(log(sample_effort)),
                              family = nbinom2, data = species_df)
-  } else {
-    species_model <- glmmTMB(total_obs ~ year_collected * gap_sts + survey_type + (1|study_area),
-                             family = nbinom2, data = species_df)
-  }
   
   results_disag[[sp]] <- species_model
 }
 
 
-# Access model results 
+# ---- Access model results ---- 
 summary(results_disag[["Wrentit"]]) 
 summary(results_disag[["Western Meadowlark"]]) 
 summary(results_disag[["Song Sparrow"]])
-#summary(results_disag[["Western Sandpiper"]])
-#summary(results_disag[["White-crowned Sparrow"]])
+summary(results_disag[["White-crowned Sparrow"]])
 summary(results_disag[["Red-breasted Nuthatch"]])
 summary(results_disag[["Red-winged Blackbird"]])
+summary(results_disag[["Western Sandpiper"]])
+
+```
+
+```{r}
+raw_coef_data <- map_dfr(results_ag, ~ broom.mixed::tidy(.x, effects = "fixed", conf.int = TRUE),
+                         .id = "species") %>%
+  filter(grepl("year", term)) %>%
+  mutate(
+    term = recode(term,
+      "year_scaled" = "Protected",
+      "year_scaled:protection_stsunprotected" = "Unprotected"
+    ),
+    across(c(estimate, conf.low, conf.high), ~ round(.x, 4)),
+    significance = case_when(
+      p.value < 0.001 ~ "***",
+      p.value < 0.01  ~ "**",
+      p.value < 0.05  ~ "*",
+      TRUE            ~ "ns"
+    )
+  ) %>%
+  select(species, term, estimate, conf.low, conf.high, significance) %>%
+  pivot_wider(
+    names_from  = term,
+    values_from = c(estimate, conf.low, conf.high, significance)
+  )
+
+n_rows <- nrow(raw_coef_data)
+
+raw_coef_table <- raw_coef_data %>%
+  gt() %>%
+  tab_header(title = "Focal Species Population Trends — Raw Coefficients") %>%
+  tab_spanner(label = "Protected",
+              columns = c(estimate_Protected, conf.low_Protected,
+                          conf.high_Protected, significance_Protected)) %>%
+  tab_spanner(label = "Unprotected",
+              columns = c(estimate_Unprotected, conf.low_Unprotected,
+                          conf.high_Unprotected, significance_Unprotected)) %>%
+  cols_label(
+    species                  = "Species",
+    estimate_Protected       = "β",
+    conf.low_Protected       = "Lower CI",
+    conf.high_Protected      = "Upper CI",
+    significance_Protected   = "Sig.",
+    estimate_Unprotected     = "β",
+    conf.low_Unprotected     = "Lower CI",
+    conf.high_Unprotected    = "Upper CI",
+    significance_Unprotected = "Sig."
+  ) %>%
+  tab_style(
+    style = list(cell_fill(color = pointblue), cell_text(color = "black", weight = "bold")),
+    locations = cells_title()
+  ) %>%
+  tab_style(
+    style = list(cell_fill(color = pointblue), cell_text(color = "black", weight = "bold")),
+    locations = cells_column_labels(everything())
+  ) %>%
+  tab_style(
+    style = list(cell_fill(color = pointblue), cell_text(color = "black", weight = "bold")),
+    locations = cells_column_spanners(everything())
+  ) %>%
+  tab_style(
+    style = cell_fill(color = pointbluelight1),
+    locations = cells_body(rows = seq(1, n_rows, 2))
+  ) %>%
+  tab_style(
+    style = cell_fill(color = pointbluelight2),
+    locations = cells_body(rows = seq(2, n_rows, 2))
+  ) %>%
+  tab_source_note("Note: β = log-scale coefficient. Models fit using glmmTMB with negative binomial family. Significance: * p<0.05, ** p<0.01, *** p<0.001, ns = not significant.")
+
+raw_coef_table
+
+#gtsave(raw_coef_table, here::here("Outputs", "figures", "focal_species_raw_coef_table.png"), zoom = 3)
+```
+
+
+## Model Results
+`tidy()` extracts coefficients on the log scale from the raw glmmTMB output
+`exp()` converts them to rate ratios (multiplicative change per unit)
+`conf.int = TRUE` adds 95% confidence intervals
+```{r}
+# Make function to extract coefficients
+extract_coefs <- function(model_list, model_label) {
+  map_dfr(model_list, ~ broom.mixed::tidy(.x, effects = "fixed", conf.int = TRUE) %>%
+    mutate(across(c(estimate, conf.low, conf.high), exp),
+           model = model_label),
+    .id = "species")
+}
+
+# --- Extract Coefs and Metrics ---
+results_tidy_ag  <- extract_coefs(results_ag,  "aggregated")
+
+glmm_format <- function(df) {
+  df %>% filter(grepl("year", term)) %>%
+    mutate(
+      pct_change = round((estimate - 1) * 100, 2),
+      pct_low    = round((conf.low - 1) * 100, 2),
+      pct_high   = round((conf.high - 1) * 100, 2),
+      significance        = case_when(
+        p.value < 0.001 ~ "***",
+        p.value < 0.01  ~ "**",
+        p.value < 0.05  ~ "*",
+        TRUE            ~ "ns"
+      )
+    ) %>%
+    select(species, model, term, pct_change, pct_low, pct_high,  significance, p.value)
+}
+
+ag_report  <- glmm_format(results_tidy_ag)
 
 ```
 
 
-## Model results 
+## Model GT summaries
+```{r}
+pointblue   <- "#4495D1"
+pointbluelight1 <- "#A8CCE8" 
+pointbluelight2 <- "#D4E6F4"  
+
+
+memo_table_data <- ag_report %>%
+  filter(grepl("year", term)) %>%
+  mutate(
+    term = recode(term,
+      "year_scaled" = "Protected",
+      "year_scaled:protection_stsunprotected" = "Unprotected"
+    )
+  ) %>%
+  select(species, term, pct_change, pct_low, pct_high, significance) %>%
+  pivot_wider(
+    names_from  = term,
+    values_from = c(pct_change, pct_low, pct_high, significance)
+  ) %>%
+  mutate(across(where(is.numeric), ~ round(.x, 2)))
+
+n_rows <- nrow(memo_table_data)
+
+memo_table <- memo_table_data %>%
+  gt() %>%
+  tab_header(title = "Focal Species Population Trends by Protection Status") %>%
+  tab_spanner(label = "Protected (%/yr)",   columns = c(pct_change_Protected, pct_low_Protected, pct_high_Protected, significance_Protected)) %>%
+  tab_spanner(label = "Unprotected (%/yr)", columns = c(pct_change_Unprotected, pct_low_Unprotected, pct_high_Unprotected, significance_Unprotected)) %>%
+  cols_label(
+    species                    = "Species",
+    pct_change_Protected       = "% Change",
+    pct_low_Protected          = "Lower CI",
+    pct_high_Protected         = "Upper CI",
+    significance_Protected     = "Sig.",
+    pct_change_Unprotected     = "% Change",
+    pct_low_Unprotected        = "Lower CI",
+    pct_high_Unprotected       = "Upper CI",
+    significance_Unprotected   = "Sig."
+  ) %>%
+  tab_style(
+    style = list(cell_fill(color = pointblue), cell_text(color = "black", weight = "bold")),
+    locations = cells_title()
+  ) %>%
+  tab_style(
+    style = list(cell_fill(color = pointblue), cell_text(color = "black", weight = "bold")),
+    locations = cells_column_labels(everything())
+  ) %>%
+  tab_style(
+    style = list(cell_fill(color = pointblue), cell_text(color = "black", weight = "bold")),
+    locations = cells_column_spanners(everything())
+  ) %>%
+  tab_style(
+    style = cell_fill(color = pointbluelight1),
+    locations = cells_body(rows = seq(1, n_rows, 2))
+  ) %>%
+  tab_style(
+    style = cell_fill(color = pointbluelight2),
+    locations = cells_body(rows = seq(2, n_rows, 2))
+  ) %>%
+  tab_source_note("Note: Estimates are annual % change((exp(β) - 1) * 100). Models fit using glmmTMB with negative binomial family. Significance: * p<0.05, ** p<0.01, *** p<0.001, ns = not significant.")
+
+memo_table
+
+```
+
+## Visuals
+
+Overall percent change:
+- visualizing song sparrow (report Moran's I), red wing blackbird, wrentit (counterintutive result), and western meadowloark (wid CIs)
 
 ```{r}
-point_count 
+ag_report %>%
+  filter(species %in% c("Song Sparrow", "Red-winged Blackbird", "Wrentit", "Western Meadowlark"),grepl("year", term)) %>%
+  mutate("year_scaled" = "Protected", "year_scaled:protection_stsunprotected" = "Unprotected") %>% 
+  ggplot(aes(x = pct_change, y = species, color = term)) +
+  geom_pointrange(aes(xmin = pct_low, xmax = pct_high),
+                  position = position_dodge(width = 0.5)) +
+  labs(x = "Annual % change in population", y = NULL, color = NULL) +
+  theme_minimal()
+
+```
+
+Raw counts
+
+- average observation count per year 
+```{r}
+focal_species_data %>% filter(common_name == "Wrentit") %>%
+  group_by(year_collected, total_obs) %>% 
+  summarize(avg_obs = mean(total_obs, na.rm = TRUE)) %>% 
+  ungroup() %>% 
+  ggplot(aes(x = year_collected, y = avg_obs)) +
+  geom_line()
+```
+
+```{r}
+focal_species_data %>% filter(common_name == "Wrentit") %>%
+  ggplot(aes(x = year_collected, y = total_obs, color = factor(gap_sts))) +
+  geom_point() +
+  labs(x = NULL, y = "Total Observation Count",
+    color = "GAP Status",
+    title = "Wrentit Population Trends by GAP Status") +
+  theme_minimal()
+
+
+focal_species_data %>%
+  filter(common_name == "Wrentit", gap_sts %in% c(2, 4, 5)) %>%
+  mutate(
+    count_rate = total_obs / sample_effort,
+    gap_sts    = factor(gap_sts)
+  ) %>%
+  group_by(year_collected, gap_sts) %>%
+  summarise(mean_rate = mean(count_rate), .groups = "drop") %>%
+  ggplot(aes(x = year_collected, y = mean_rate, color = gap_sts)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", se = TRUE, alpha = 0.15) +
+  facet_wrap(~ gap_sts, scales = "free_y", ncol = 1) +
+  labs(x = NULL, y = "Mean count rate (per unit effort)", title = "Wrentit Population Trends by GAP Status") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+```{r}
+focal_species_data %>%
+  filter(common_name == "Song Sparrow") %>%
+  mutate(
+    count_rate     = total_obs / sample_effort,
+    protection_sts = recode(protection_sts,
+      "protected"   = "Protected",
+      "unprotected" = "Unprotected"
+    )
+  ) %>%
+  group_by(year_collected, protection_sts) %>%
+  summarise(mean_rate = mean(count_rate), .groups = "drop") %>%
+  ggplot(aes(x = year_collected, y = mean_rate, color = protection_sts)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", se = TRUE, alpha = 0.15) +
+  facet_wrap(~ protection_sts, scales = "free_y", ncol = 1) +
+  scale_color_manual(values = c("Protected" = "#00BFC4", "Unprotected" = "#F8766D")) +
+  labs(
+    x     = NULL,
+    y     = "Mean count rate (per unit effort)",
+    title = "Song Sparrow Population Trends") +
+  theme_minimal() +
+  theme(legend.position = "none")
 ```
 
 
