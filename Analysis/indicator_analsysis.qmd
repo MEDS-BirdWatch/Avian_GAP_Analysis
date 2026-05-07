@@ -25,8 +25,7 @@ library(arcgislayers)
 library(indicspecies)
 library(readxl)
 
-# Source spatial join
-source(here("R", "spatial_join.R"))
+birds_joined <- st_read_parquet(here("data","data_processed","birds_joined.parquet"))
 
 # Load Partners in Flight for California Bird Conservation Regions 
 pif_ca <- read_excel(here("data", "ACAD Regional 2024.06.03.xlsx")) %>% 
@@ -110,7 +109,7 @@ sp_obs_habitat <- birds_joined %>%
   st_drop_geometry() %>%
   inner_join(focal_species, by = c("common_name", "habitat_type" = "group")) %>%
   group_by(common_name) %>%
-  summarize(sum_obs = sum(observation_count))
+  summarize(sum_obs = sum(observation_count, na.rm = TRUE))
 
 focal_species <- left_join(focal_species, sp_obs_habitat, by = "common_name")
 

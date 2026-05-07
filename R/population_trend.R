@@ -1,12 +1,11 @@
 
-population_trends <- function(data, species_list, years_list){
-  
-  data %>% 
-    st_drop_geometry() %>% 
-    filter(scientific_name %in% species_list,
-           year_collected %in% years_list) %>% 
-    group_by(scientific_name, year_collected) %>% 
-    mutate(total_obs = sum(observation_count, na.rm = TRUE)) %>%
+population_trends <- function(data, species_list) {
+  data %>%
+    inner_join(species_list, by = c("common_name", "habitat_type")) %>%
+    group_by(common_name, year_collected, protection_sts, gap_sts, study_area, survey_type, sample_effort, geometry) %>%
+    summarise(total_obs = sum(observation_count, na.rm = TRUE)) %>% 
     ungroup() %>% 
-    dplyr::select(scientific_name, year_collected, gap_sts, habitat_type, total_obs)
+    # Center years for models 
+    mutate(year_scaled = year_collected - min(year_collected)) %>% 
+    dplyr::select(common_name, year_collected, year_scaled, total_obs, protection_sts,gap_sts,study_area, survey_type, sample_effort, geometry)
 }
