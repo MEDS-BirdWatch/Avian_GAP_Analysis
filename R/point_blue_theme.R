@@ -14,7 +14,8 @@ library(showtext)
 font_add_google("Libre Franklin", family = "lib_frank")
 
 point_blue <- "#4495D1"
-point_light_blue <- "#8EBEE2"
+point_light_blue1 <- "#8EBEE2"
+point_light_blue2 <- "#D4E6F4"  
 point_green <- "#74B743"
 camel <- "#A98858"
 gold <- "#FEDD63"

@@ -23,6 +23,7 @@ library(kableExtra)
 birds_joined <- st_read_parquet(here('data', 'data_processed', 'birds_joined.parquet'))
 
 source(here("R", "point_blue_theme.R"))
+source(here("R", "rich_gini.R"))
 showtext_auto(enable = TRUE)
 
 ```
@@ -179,6 +180,17 @@ county_obs %>%
   kable_styling(bootstrap_options = c("striped", "hover")) %>%
   row_spec(0, background = point_light_blue) %>% 
   save_kable(here::here('Outputs', 'figures', "county_density_table.png"), zoom = 4)
+```
+
+```{r}
+yearly_biodiv <- birds_joined %>% 
+  gini_simpson() 
+
+range(yearly_biodiv$rich_gini, na.rm = TRUE)
+
+yearly_biodiv <- yearly_biodiv %>% 
+  group_by(year_collected) %>% 
+  summarize(rich_gini)
 ```
 
 ```{r}
