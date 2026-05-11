@@ -370,49 +370,11 @@ summary(results_disag[["Western Sandpiper"]])
 
 ```
 
-
-## Model Results
-`tidy()` extracts coefficients on the log scale from the raw glmmTMB output
-`exp()` converts them to rate ratios (multiplicative change per unit)
-`conf.int = TRUE` adds 95% confidence intervals
-```{r}
-# Make function to extract coefficients
-extract_coefs <- function(model_list, model_label) {
-  map_dfr(model_list, ~ broom.mixed::tidy(.x, effects = "fixed", conf.int = TRUE) %>%
-    mutate(across(c(estimate, conf.low, conf.high), exp),
-           model = model_label),
-    .id = "species")
-}
-
-# --- Extract Coefs and Metrics ---
-results_tidy_ag  <- extract_coefs(results_ag,  "aggregated")
-
-glmm_format <- function(df) {
-  df %>% filter(grepl("year", term)) %>%
-    mutate(
-      pct_change = round((estimate - 1) * 100, 2),
-      pct_low    = round((conf.low - 1) * 100, 2),
-      pct_high   = round((conf.high - 1) * 100, 2),
-      significance        = case_when(
-        p.value < 0.001 ~ "***",
-        p.value < 0.01  ~ "**",
-        p.value < 0.05  ~ "*",
-        TRUE            ~ "ns"
-      )
-    ) %>%
-    select(species, model, term, pct_change, pct_low, pct_high,  significance, p.value)
-}
-
-ag_report  <- glmm_format(results_tidy_ag)
-
-```
-
 ## Model GT summaries
 ```{r}
 #pointblue   <- "#4495D1"
 #pointbluelight1 <- "#A8CCE8" 
 #pointbluelight2 <- "#D4E6F4"  
-
 
 raw_coef_data <- map_dfr(results_ag, ~ broom.mixed::tidy(.x, effects = "fixed", conf.int = TRUE),
                          .id = "species") %>%
@@ -486,27 +448,41 @@ gtsave(focal_species_table, here::here("Outputs", "figures", "focal_species_coef
 ```
 
 ## Visuals
-
 ```{r}
-protected_trend <- raw_coef_data %>%
+font_add_google("Libre Franklin", "libre_franklin")
+showtext_auto()
+
+protected_data <- raw_coef_data %>%
+  filter(species %in% c("Wrentit", "Song Sparrow", 
+                         "Western Meadowlark", "Red-winged Blackbird")) %>%
   mutate(
     pct_change = (exp(estimate_Protected) - 1) * 100,
     pct_lo     = (exp(conf.low_Protected) - 1) * 100,
-    pct_hi     = (exp(conf.high_Protected) - 1) * 100
+    pct_hi     = (exp(conf.high_Protected) - 1) * 100,
+    direction  = ifelse(pct_change > 0, "Increasing", "Declining")
   )
 
-ggplot(protected_trend, aes(x = pct_change, y = reorder(species, pct_change)) +
-  geom_vline(xintercept = 0, linetype = "dashed", color = "gray50") +
-  geom_errorbarh(aes(xmin = pct_lo, xmax = pct_hi), height = 0.2) +
-  geom_point(size = 3) +
-  scale_shape_manual(values = c("TRUE" = 16, "FALSE" = 21),
-                     labels = c("TRUE" = "Significant", "FALSE" = "ns")) +
-  labs(x = "Annual % change in protected sites",
-       y = NULL, shape = NULL) +
-  theme_minimal(base_size = 11) +
-  theme(axis.text.y = element_text(face = "italic"),
-        panel.grid.minor = element_blank(),
-        legend.position = "bottom")
+ggplot(protected_data, aes(x = pct_change, 
+                            y = reorder(species, pct_change),
+                            color = direction)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey") +
+  geom_errorbarh(aes(xmin = pct_lo, xmax = pct_hi), 
+                 height = 0.2, linewidth = 0.6) +
+  geom_point(size = 3.5) +
+  labs(x = "% change per year in protected sites",
+       y = NULL, color = NULL, shape = NULL) +
+  theme_classic(base_size = 11) +
+  theme(text             = element_text(family = "libre_franklin"),
+        axis.text.y      = element_text(face = "italic", family = "libre_franklin"),
+        axis.text.x      = element_text(family = "libre_franklin"),
+        legend.text      = element_text(family = "libre_franklin"),
+        plot.caption     = element_text(family = "libre_franklin"),
+        legend.position  = "bottom",
+        panel.grid.minor = element_blank())
+
+ggsave("focal_species_trends.pdf", 
+        width = 8, height = 5, 
+       device = cairo_pdf)
 ```
 
 Raw counts
