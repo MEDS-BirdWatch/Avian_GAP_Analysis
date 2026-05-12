@@ -3,6 +3,7 @@
 This repository houses scripts, functions, and outputs from analyses of biodiversity by GAP Status and CAL FIRE habitat type, and of biodiversity trends in focal species across Avian Knowledge Network's sampling window. 
 
 ## Structure
+
 ```
 ├── Analysis
 │   ├── focal_species_selection.csv
