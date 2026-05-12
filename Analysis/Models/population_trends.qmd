@@ -376,13 +376,13 @@ summary(results_disag[["Western Sandpiper"]])
 #pointbluelight1 <- "#A8CCE8" 
 #pointbluelight2 <- "#D4E6F4"  
 
-raw_coef_data <- map_dfr(results_ag, ~ broom.mixed::tidy(.x, effects = "fixed", conf.int = TRUE),
-                         .id = "species") %>%
-  filter(grepl("year", term)) %>%
+raw_coef_table <- map_dfr(results_ag, ~ broom.mixed::tidy(.x, effects = "fixed", conf.int = TRUE),
+                      .id = "species") %>%
+  filter(term %in% c("year_scaled", "year_scaled:protection_stsunprotected")) %>%
   mutate(
     term = recode(term,
-      "year_scaled" = "Protected",
-      "year_scaled:protection_stsunprotected" = "Unprotected"
+      "year_scaled"                              = "Protected",
+      "year_scaled:protection_stsunprotected"    = "Interaction"
     ),
     across(c(estimate, conf.low, conf.high), ~ round(.x, 4)),
     significance = case_when(
@@ -398,38 +398,41 @@ raw_coef_data <- map_dfr(results_ag, ~ broom.mixed::tidy(.x, effects = "fixed", 
     values_from = c(estimate, conf.low, conf.high, significance)
   )
 
-n_rows <- nrow(raw_coef_data)
+n_rows <- nrow(raw_coef_table)
 
-focal_species_table <- raw_coef_data %>%
+focal_species_coef_table <- focal_species_coef_table %>%
   gt() %>%
   tab_header(title = "Focal Species Population Trends") %>%
-  tab_spanner(label = "Protected",
+  tab_spanner(label = "Year trend in protected sites",
               columns = c(estimate_Protected, conf.low_Protected,
                           conf.high_Protected, significance_Protected)) %>%
-  tab_spanner(label = "Unprotected",
-              columns = c(estimate_Unprotected, conf.low_Unprotected,
-                          conf.high_Unprotected, significance_Unprotected)) %>%
+  tab_spanner(label = "Year × protection interaction",
+              columns = c(estimate_Interaction, conf.low_Interaction,
+                          conf.high_Interaction, significance_Interaction)) %>%
   cols_label(
-    species                  = "Species",
-    estimate_Protected       = "β",
-    conf.low_Protected       = "Lower CI",
-    conf.high_Protected      = "Upper CI",
-    significance_Protected   = "Sig.",
-    estimate_Unprotected     = "β",
-    conf.low_Unprotected     = "Lower CI",
-    conf.high_Unprotected    = "Upper CI",
-    significance_Unprotected = "Sig."
+    species                   = "Species",
+    estimate_Protected        = "β",
+    conf.low_Protected        = "Lower CI",
+    conf.high_Protected       = "Upper CI",
+    significance_Protected    = "Sig.",
+    estimate_Interaction      = "β",
+    conf.low_Interaction      = "Lower CI",
+    conf.high_Interaction     = "Upper CI",
+    significance_Interaction  = "Sig."
   ) %>%
   tab_style(
-    style = list(cell_fill(color = point_blue), cell_text(color = "black", weight = "bold")),
+    style = list(cell_fill(color = point_blue), 
+                 cell_text(color = "black", weight = "bold")),
     locations = cells_title()
   ) %>%
   tab_style(
-    style = list(cell_fill(color = point_blue), cell_text(color = "black", weight = "bold")),
+    style = list(cell_fill(color = point_blue), 
+                 cell_text(color = "black", weight = "bold")),
     locations = cells_column_labels(everything())
   ) %>%
   tab_style(
-    style = list(cell_fill(color = point_blue), cell_text(color = "black", weight = "bold")),
+    style = list(cell_fill(color = point_blue), 
+                 cell_text(color = "black", weight = "bold")),
     locations = cells_column_spanners(everything())
   ) %>%
   tab_style(
@@ -440,11 +443,15 @@ focal_species_table <- raw_coef_data %>%
     style = cell_fill(color = point_light_blue2),
     locations = cells_body(rows = seq(2, n_rows, 2))
   ) %>%
+  tab_style(
+    style = cell_text(style = "italic"),
+    locations = cells_body(columns = species)
+  ) %>%
   tab_source_note("Note: β = log-scale coefficient. Models fit using glmmTMB with negative binomial family. Significance: * p<0.05, ** p<0.01, *** p<0.001, ns = not significant.")
 
-focal_species_table
+focal_species_coef_table
 
-gtsave(focal_species_table, here::here("Outputs", "figures", "focal_species_coef_table.png"), zoom = 3)
+gtsave(focal_species_coef_table, here::here("Outputs", "figures", "focal_species_coef_table.png"), zoom = 3)
 ```
 
 ## Visuals
