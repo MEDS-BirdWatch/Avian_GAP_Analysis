@@ -1,31 +1,29 @@
-adj_fit_agg <- function(dat, sample_size){
+adj_fit_agg <- function(dat) {
   habitats <- unique(dat$habitat_type)
-  tmp <- vector(mode = 'list', length = 0)
   model <- vector(mode = 'list', length = 0)
   
-  for (i in habitats){
+  for (i in habitats) {
+    tmp <- dat %>%
+      st_drop_geometry() %>%
+      filter(habitat_type == i, rich_gini > 0, !is.na(rich_gini)) 
     
-    tmp[[i]] <- dat %>% 
-      st_drop_geometry() %>% 
-      filter(habitat_type == i)
-    
-    if (n_distinct(tmp[[i]]$protection) < 2) { 
-      message("Skipping: ", sample_size, ' ', i)
+    if (n_distinct(tmp$protection) < 2) {
+      message("Skipping: ", i)
       next
     }
     
     model[[i]] <- tryCatch(
       glmmTMB(rich_gini ~ protection + (1|study_area) + (1|year_collected),
-              family = beta_family(), data = tmp[[i]]),
+              family = Gamma(link = "log"), data = tmp),
       error = function(e) {
-        message("Trying BFGS for: ", sample_size, " ", i)
+        message("Trying BFGS for: ", i)
         tryCatch(
-          glmmTMB(rich_gini ~ protection + (1|study_area) + (1|year_collected),
-                  family = beta_family(), data = tmp[[i]],
+          glmmTMB(rich_gini ~ protection  + (1|study_area) + (1|year_collected),
+                  family = Gamma(link = "log"), data = tmp,
                   control = glmmTMBControl(optimizer = optim, optArgs = list(method = "BFGS"))),
           error = function(e2) {
-            message("Falling back for: ", sample_size, " ", i, " | ", e2$message)
-            glmmTMB(rich_gini ~ protection, family = beta_family(), data = tmp[[i]])
+            message("Falling back for: ", i, " | ", e2$message)
+            glmmTMB(rich_gini ~ protection, family = Gamma(link = "log"), data = tmp)
           }
         )
       }
