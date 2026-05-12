@@ -68,7 +68,7 @@ Stores the functions used to complete analyses.
 | Data Source | Type | Link |
 |-------------|------|------|
 | USGS GAP Project | Protected areas polygons (GAP status) | [USGS GAP](https://www.usgs.gov/programs/gap-analysis-project) |
-| FVEG 2022 | California vegetation habitat raster | [FVEG22]([https://www.fire.ca.gov/what-we-do/fire-resource-assessment-program/fire-perimeters](https://34c031f8-c9fd-4018-8c5a-4159cdff6b0d-cdn-endpoint.azureedge.net/-/media/calfire-website/what-we-do/fire-resource-assessment-program---frap/gis-data/fveg221gdb.zip?rev=d7c66902bb404223b1a1a0e3e7cc66f8&hash=B7EE3663C90EB92B07EB7DF4E9C509A3)) |
+| FVEG 2022 | California vegetation habitat raster | [FVEG22](https://www.fire.ca.gov/what-we-do/fire-resource-assessment-program/fire-perimeters](https://34c031f8-c9fd-4018-8c5a-4159cdff6b0d-cdn-endpoint.azureedge.net/-/media/calfire-website/what-we-do/fire-resource-assessment-program---frap/gis-data/fveg221gdb.zip?rev=d7c66902bb404223b1a1a0e3e7cc66f8&hash=B7EE3663C90EB92B07EB7DF4E9C509A3 ) |
 | Avian Knowledge Network | Bird observation survey data (point count & area search) | [AKN](https://avianknowledge.net) |
 
 -  Next run spatial_join.R
