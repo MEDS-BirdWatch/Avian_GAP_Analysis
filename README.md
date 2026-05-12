@@ -3,7 +3,7 @@
 This repository houses scripts, functions, and outputs from analyses of biodiversity by GAP Status and CAL FIRE habitat type, and of biodiversity trends in focal species across Avian Knowledge Network's sampling window. 
 
 ## Structure
-
+```
 ├── Analysis
 │   ├── focal_species_selection.csv
 │   ├── indicator_analsysis.qmd
@@ -41,7 +41,7 @@ This repository houses scripts, functions, and outputs from analyses of biodiver
 │   ├── spatial_join.R
 │   └── testing_species_obs.R
 └── README.md
-
+```
 
 
 ### Analysis
