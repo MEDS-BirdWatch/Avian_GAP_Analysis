@@ -9,12 +9,11 @@ execute:
 ## Focal species models
 In this workflow we will perform the following:
 1. Define our focal species from our `indicator_analysis.qmd` workflow. The species produced in the `focal_species` dataframe were then sent to Point Blue staff scientists for further guidance on determining our focal species. 
-2. Run model fit diagnostics checks for 1) all focal species (no survey subset) 2) all focal species (survey subset). 
-3. Run GLMMM model for aggregated data where protection status is determined by protected (GAP status 1 - 2) and unprotected (GAP status 3-5). 
-4. Run GLMM model for disaggregated data with all GAP status protection levels.
+2. Run model fit diagnostics checks. 
+3. Run negative binomial GLMMM model for aggregated data where protection status is determined by protected (GAP status 1 - 2) and unprotected (GAP status 3-5). 
+4. Run negative binomial GLMM model for disaggregated data with all GAP status protection levels.
 5. Summarize results with a gt summary. 
-
-### Model Overview
+6. Visualize trends with `ggeffects` package. 
 
 ## Set-Up 
 ```{r}
@@ -80,9 +79,11 @@ focal_species <- data.frame(
 
 # Apply function to extract individual species data from `birds_joined` 
 focal_species_data <- population_trends(data = birds_joined, species_list = focal_species)
+
 ```
 
 ## Diagnostic checks
+In this section, model diagnostics are run to determine the most optimal model for this species subset. The most optimal model is chosen as the model with the smallest AIC between Poisson and Negative binomial type II. Poisson and Negative binomial are ideal for data with high levels of overdispersion. 
 ```{r}
 # Per-species family selection + dispersion diagnostics
 model_diagnostics <- list()
@@ -97,8 +98,8 @@ for (i in unique(focal_species_data$common_name)) {
                     family = nbinom2, data = species_df)
   
   # Pick best model based on minimum AIC 
-  best_model <- list(poisson = m_pois, nb1 = m_nb1, nb2 = m_nb2)[[
-    which.min(c(AIC(m_pois), AIC(m_nb1), AIC(m_nb2)))
+  best_model <- list(poisson = m_pois, nb2 = m_nb2)[[
+    which.min(c(AIC(m_pois), AIC(m_nb2)))
   ]]
   #Check over dispersion with Pearson
   pearson_resid <- residuals(best_model, type = "pearson")
@@ -120,6 +121,24 @@ model_fit_df
 ```
 
 ## Models -- Aggregated/Protection 
+
+The following negative binomial generalized linear mixed model (GLMM) was fit 
+for each focal species:
+
+$$
+\log(\mu_{ij}) = \beta_0 + \beta_1 \text{Year}_{ij} + \beta_2 \text{Unprotected}_{ij} + 
+\beta_3 (\text{Year}_{ij} \times \text{Unprotected}_{ij}) + 
+\log(\text{Effort}_{ij}) + u_j
+$$
+
+- $\mu_{ij}$ = expected count for observation
+- $\beta_0$ = intercept (protected sites baseline)
+- $\beta_1$ = annual trend in protected sites
+- $\beta_2$ = baseline difference between unprotected and protected sites
+- $\beta_3$ = difference in annual trend between unprotected and protected sites (interaction)
+- $\log(\text{Effort}_{ij})$ = offset for survey effort (minutes)
+- $u_j \sim \mathcal{N}(0, \sigma^2_u)$ = random intercept for study area
+
 ```{r}
 # Define list 
 results_ag <- list()
@@ -135,20 +154,11 @@ for (sp in unique(focal_species_data$common_name)) {
 }
 
 # ---- Access model results ----
-summary(results_ag[["Wrentit"]]) 
-summary(results_ag[["Western Meadowlark"]]) 
-summary(results_ag[["Song Sparrow"]])
-summary(results_ag[["White-crowned Sparrow"]])
-summary(results_ag[["Red-breasted Nuthatch"]])
-summary(results_ag[["Red-winged Blackbird"]])
-summary(results_ag[["Western Sandpiper"]])
-
 lapply(results_ag, summary)
-
-saveRDS(model_results, "outputs/models/focal_species_models.rds")
 ```
 
-## Autocorrelation tests
+### Autocorrelation test - Aggregated Model
+In this section spatial and temporal autocorrelation was tested on the `results_ag` model wih the Moran's Index and Durbin Watson. 
 ```{r}
 # ---- Test Autocorrelation ----
 model_data_map <- list()
@@ -164,10 +174,20 @@ models <- lapply(results_ag, function(m) list(all = m))
 model_autocorr_results <- run_spatial_temporal_tests(models, model_data_map, habitats = "all")
 
 model_autocorr_results
+
+
 ```
 
-
 ## Models -- Disaggregated/GAP
+The following negative binomial GLMM was fit for each focal species across GAP status levels:
+
+$$
+\log(\mu_{ij}) = \beta_0 + \beta_1 \text{Year}_{ij} + 
+\sum_{k} \gamma_k \text{GAP}_{k,ij} + 
+\sum_{k} \delta_k (\text{Year}_{ij} \times \text{GAP}_{k,ij}) + 
+\log(\text{Effort}_{ij}) + u_j
+$$
+
 ```{r}
 # What are the number of observations per species per GAP level? 
 # This will determine if the model will break
@@ -190,22 +210,34 @@ for (sp in unique(focal_species_data$common_name)) {
 
 
 # ---- Access model results ---- 
-summary(results_disag[["Wrentit"]]) 
-summary(results_disag[["Western Meadowlark"]]) 
-summary(results_disag[["Song Sparrow"]])
-summary(results_disag[["White-crowned Sparrow"]])
-summary(results_disag[["Red-breasted Nuthatch"]])
-summary(results_disag[["Red-winged Blackbird"]])
-summary(results_disag[["Western Sandpiper"]])
+lapply(results_disag, summary)
 
+```
+### Autocorrelation test - Disaggregated Model
+```{r}
+# ---- Test Autocorrelation ----
+model_data_map <- list()
+for (sp in names(results_disag)) {
+  set.seed(76)
+  model_data_map[[sp]] <- focal_species_data %>% 
+    filter(common_name == sp) %>%
+    mutate(habitat_type = "all")
+}
+
+models <- lapply(results_disag, function(m) list(all = m))
+
+model_autocorr_results <- run_spatial_temporal_tests(models, model_data_map, habitats = "all")
+
+model_autocorr_results
 ```
 
 
-## Model GT summaries with Marginal Effects 
+##  Population Trend Coefficients and Marginal Effects
+In this section, population trend coefficients were extracted from each model with `broom.mixed::tidy()`. The annual unprotected trend was estimated from the `marginaleffects` package using the `avg_slopes()` function. 
 
 ### Aggregated GT summary 
 ```{r}
-# Step 1: raw coefficients (protected + interaction)
+# Raw coefficients (protected + interaction)
 raw_coef_table <- map_dfr(results_ag, ~ broom.mixed::tidy(.x, effects = "fixed", conf.int = TRUE),
                       .id = "species") %>%
   filter(term %in% c("year_scaled", "year_scaled:protection_stsunprotected")) %>%
@@ -228,7 +260,7 @@ raw_coef_table <- map_dfr(results_ag, ~ broom.mixed::tidy(.x, effects = "fixed",
     values_from = c(estimate, conf.low, conf.high, significance)
   )
 
-# Step 2: unprotected marginal trend via avg_slopes
+# Unprotected marginal trend via avg_slopes
 unprotected_slopes <- map_dfr(names(results_ag), function(sp) {
   avg_slopes(results_ag[[sp]],
              variables = "year_scaled",
@@ -242,7 +274,7 @@ unprotected_slopes <- map_dfr(names(results_ag), function(sp) {
         p.value < 0.001 ~ "***",
         p.value < 0.01  ~ "**",
         p.value < 0.05  ~ "*",
-        TRUE            ~ "ns"
+        TRUE ~ "ns"
       )
     ) %>%
     select(species, 
@@ -252,13 +284,13 @@ unprotected_slopes <- map_dfr(names(results_ag), function(sp) {
            significance_Unprotected)
 })
 
-# Step 3: join
+# Join raw coef with unprotected slopes 
 raw_coef_table <- raw_coef_table %>%
   left_join(unprotected_slopes, by = "species")
 
 n_rows <- nrow(raw_coef_table)
 
-# Step 4: gt table
+# Gt table 
 focal_species_coef_table <- raw_coef_table %>%
   gt() %>%
   tab_header(title = "Focal Species Population Trends") %>%
@@ -316,11 +348,13 @@ focal_species_coef_table <- raw_coef_table %>%
   tab_source_note("Note: β = log-scale coefficient. Protected and interaction terms from glmmTMB fixed effects. Unprotected trend computed via avg_slopes() accounting for coefficient covariance. Significance: * p<0.05, ** p<0.01, *** p<0.001, ns = not significant.")
 
 focal_species_coef_table
+
 #gtsave(focal_species_coef_table, here::here("Outputs", "figures", "focal_species_coef_table.png"), zoom = 3)
 ```
 
 ### Disaggregated GT summary
-GT summaries for only species with significant and stable models. Majority of species had sparse data across different GAP levels. 
+In this section GT summaries were built only for species with significant and stable models. Majority of species had sparse data across different GAP levels. 
+
 ```{r}
 # Species with stable disaggregated models
 stable_disag_species <- c("Wrentit", "Western Meadowlark", "Red-winged Blackbird")
@@ -419,7 +453,7 @@ disag_coef_table %>%
 
 
 ## Visuals
-- ggpredict calculates the unprotected trend in a similar way to marginal effects 
+In this section, predicted population trends were generated using `ggpredict()` from the `ggeffects` package. Predictions reflect model estimates of relative abundance over time for protected and unprotected sites. The unprotected trend is equivalent to the marginal effect's unprotected trend.
 ```{r}
 
 font_add_google("Libre Franklin", family = "libre franklin")
@@ -439,7 +473,6 @@ weme_trends_plt <- ggpredict(results_ag[["Western Meadowlark"]],
   # Add uncertainty bounds
   geom_ribbon(aes(ymin = conf.low, ymax = conf.high),
               alpha = 0.12, color = NA) +
-  # Change scale to be exponential 
   geom_line(linewidth = 1) +
   scale_color_manual(values = c("protected"   = "#558731",
                                  "unprotected" = "#595959"),
@@ -555,5 +588,42 @@ ggpredict(results_ag[["Red-winged Blackbird"]],
         panel.grid.minor = element_blank())
 ```
 
+```{r}
+ggpredict(results_ag[["Red-breasted Nuthatch"]], 
+          terms = c("year_scaled [all]", "protection_sts"),
+          # Hold variables in model constant 
+          condition = c(sample_effort = mean(
+            focal_species_data$sample_effort[
+              focal_species_data$common_name == "Red-breasted Nuthatch"]))) %>%
+  as.data.frame() %>%
+  mutate(year = x + min(focal_species_data$year_collected)) %>%
+  ggplot(aes(x = year, y = predicted,
+             color = group, fill = group)) +
+  # Add uncertainty bounds
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high),
+              alpha = 0.12, color = NA) +
+  geom_line(linewidth = 1) +
+  scale_color_manual(values = c("protected"   = "#558731",
+                                 "unprotected" = "#595959"),
+                     labels = c("Protected", "Unprotected")) +
+    scale_fill_manual(values  = c("protected"   = "#558731",
+                                 "unprotected" = "#595959"),
+                    labels  = c("Protected", "Unprotected")) +
+  guides(fill = "none") +
+  labs(x = NULL, 
+       y = "Relative abundance",
+       color = NULL,
+       title = "Red-breasted Nuthatch in Conifer",
+       subtitle = "Protected sites maintain relatively stable populations.") +
+  theme_classic(base_size = 11) +
+  theme(text             = element_text(family = "libre franklin"),
+        plot.title       = element_text(face = "italic", size = 15),
+        plot.subtitle    = element_text(size = 9, color = "gray40"),
+         plot.background = element_rect(fill = "#e8eff7"),
+        legend.background = element_rect(fill = "#e8eff7"),
+        panel.background = element_rect(fill = "#e8eff7"),
+        legend.position  = "bottom",
+        panel.grid.minor = element_blank())
 
+```
 
