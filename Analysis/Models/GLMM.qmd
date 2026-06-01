@@ -1,5 +1,442 @@
 ---
-title: "glmm"
+title: "GLMM"
 format: html
+cache: TRUE
+warning: FALSE
 ---
+Load Packages, functions, and data
+```{r}
+library(tidyverse)
+library(sf) #1.0-21
+library(here) #1.0.1
+library(janitor) #2.2.1
+library(stars) #0.6-8
+library(terra) #1.8-42
+library(glmmTMB) #1.1.14
+library(broom.mixed)
+library(gtsummary)
+library(gtExtras)
+library(lmtest)
+library(spdep)
+library(kableExtra)
+library(sfarrow)
+library(kableExtra)
+library(webshot2)
+
+source(here('R', 'autocorrelation_tests.R'))
+source(here('R','fit_agg.R'))
+source(here('R','fit_disagg.R'))
+source(here('R','adj_fit_agg.R'))
+source(here('R', 'adj_fit_disagg.R'))
+source(here('R','point_blue_theme.R'))
+
+source(here('R', 'rich_gini.R'))
+
+set.seed(76)
+
+
+birds_joined <- st_read_parquet(here('data', 'data_processed', 'birds_joined.parquet'))
+
+habitats <- unique(birds_joined$habitat_type)
+
+birds_joined <- st_read_parquet()
+```
+
+
+## Base Models
+We first tested our base models and assessed for temporal and spatial autocorrelation. With more data the base models may show no temporal or spatial autocorrelation.
+```{r}
+#| warning: FALSE
+
+# Create data frame to be used in model
+biodiv_area_search_agg <- birds_joined %>% 
+  # Filter for survey type to separate them
+    filter(survey_type %in% "Area Search")  %>%
+  # Run gini_simpson 
+    gini_simpson()%>% 
+  # Aggregate by protection
+    mutate(protection = ifelse(gap_sts %in% c(1,2), 
+                               'Protected', 'Non-protected')) %>% 
+  # Arrange for durbin watson
+    arrange(desc(observation_date))
+  
+# Run data through model
+  area_agg <- fit_agg(biodiv_area_search_agg)
+  
+# Repeat for aggregated, disagregated
+  biodiv_point_count_agg <- birds_joined %>% 
+    filter(survey_type %in% "Point Count") %>% 
+    gini_simpson() %>%
+    mutate(protection = ifelse(gap_sts %in% c(1,2), 
+                               'Protected', 'Non-protected'))%>% 
+    arrange(desc(observation_date))
+  
+  point_agg <- fit_agg(biodiv_point_count_agg)
+  
+  biodiv_area_search_disag <- birds_joined %>% 
+    mutate(gap_sts = as.numeric(gap_sts)) %>% 
+    filter(survey_type %in% "Area Search") %>% 
+    gini_simpson()%>% 
+    arrange(desc(observation_date))
+  
+  area_disag <- fit_disagg(biodiv_area_search_disag) 
+  
+  biodiv_point_count_disag <- birds_joined %>% 
+    mutate(gap_sts = as.numeric(gap_sts)) %>% 
+    filter(survey_type %in% "Point Count") %>% 
+    gini_simpson() %>% 
+    arrange(desc(observation_date))
+  
+ point_disag <- fit_disagg(biodiv_point_count_disag)
+  
+  
+ # This is for a general summary (not separating by survey type)
+  birds_rich <- birds_joined %>%  
+    gini_simpson() %>% 
+    mutate(protection = ifelse(gap_sts %in% c(1,2), 
+                               'Protected', 'Non-protected'))%>% 
+    arrange(desc(observation_date))
+  
+  bird_summary <- fit_agg(birds_rich)
+  
+
+# Aggregate models for the function
+models <- list(
+  point_disag  = point_disag,
+  area_disag   = area_disag,
+  point_agg    = point_agg,
+  area_agg     = area_agg,
+  bird_summary = bird_summary
+)
+
+spatial_temporal_tests <- list()
+
+# Aggregate data for morans
+model_data_map <- list(
+  point_disag  = biodiv_point_count_disag,
+  area_disag   = biodiv_area_search_disag,
+  point_agg    = biodiv_point_count_agg,
+  area_agg     = biodiv_area_search_agg,
+  bird_summary = birds_rich
+)
+
+# Run function
+spatial_temporal_tests <- run_spatial_temporal_tests(
+  models         = models,
+  model_data_map = model_data_map,
+  habitats       = habitats
+)
+# Print to assess (can be overwhelming)
+print(spatial_temporal_tests, n = 38)
+```
+
+## Base model kable tables 
+
+These kable tables are used to assess the models and were primarily used in the technical memorandum. Currently they save to our `outputs/figures` but the last line can be deleted to display locally
+
+```{r}
+#| warning: FALSE
+
+
+## Aggregated Durbin Watson 
+spatial_temporal_tests %>%
+  filter(model_name %in% c('point_agg', 'area_agg')) %>%
+  select(model_name, habitat, dw) %>%
+  mutate(habitat = str_to_title(habitat),
+         dw = round(dw, 3)) %>%
+  pivot_wider(names_from = model_name, values_from = dw) %>%
+  rename('Type' = habitat, 
+         'Point Count' = 'point_agg', 
+         'Area Search' = 'area_agg') %>%
+   kable() %>%
+  kable_styling(bootstrap_options = c("hover"), full_width = F) %>%
+  add_header_above(c("Habitat" = 1, "Durbin-Watson" = 2), 
+                   background = "#4A90C4", color = "white", bold = TRUE) %>%
+  add_header_above(c('Aggregated Durbin-Watson Statistics by Survey Method' = 3),  background = "#4A90C4", color = "white", bold = TRUE) %>% 
+  row_spec(0, background = "#4A90C4", color = "white", bold = TRUE) %>%
+  row_spec(seq(1, 7, 2), background = "#8EBEE2") %>%
+  row_spec(seq(2, 6, 2), background = "#D6E8F5") %>%
+  footnote(general = "DW values near 2 indicate no temporal autocorrelation.") %>% 
+  save_kable(here('Outputs', 'figures', "agg_dw.png"), zoom = 3)
+
+## Disaggregated Durbin Datson 
+spatial_temporal_tests %>%
+  filter(model_name %in% c('point_disag', 'area_disag')) %>%
+  select(model_name, habitat, dw) %>%
+  mutate(habitat = str_to_title(habitat),
+         dw = round(dw,3)) %>%
+  pivot_wider(names_from = model_name, values_from = dw) %>%
+  rename('Type' = habitat, 
+         'Point Count' = point_disag, 
+         'Area Search' = area_disag) %>%
+   kable() %>%
+  kable_styling(bootstrap_options = c("hover"), full_width = F) %>%
+  add_header_above(c("Habitat" = 1, "Durbin-Watson" = 2), 
+                   background = "#4A90C4", color = "white", bold = TRUE) %>%
+  add_header_above(c('Disaggregated Durbin-Watson Statistics by Survey Method' = 3),  background = "#4A90C4", color = "white", bold = TRUE) %>% 
+  row_spec(0, background = "#4A90C4", color = "white", bold = TRUE) %>%
+  row_spec(seq(1, 7, 2), background = "#8EBEE2") %>%
+  row_spec(seq(2, 6, 2), background = "#D6E8F5") %>%
+  footnote(general = "DW values near 2 indicate no autocorrelation.") %>% 
+  save_kable(here('Outputs', 'figures',"disag_dw.png"), zoom = 3)
+
+## Aggregated Moran's Index
+spatial_temporal_tests %>%
+  filter(model_name %in% c('point_disag', 'area_disag')) %>%
+  select(model_name, habitat, moran_I) %>%
+  mutate(habitat = str_to_title(habitat),
+         moran_I = round(moran_I, 3)) %>%
+  pivot_wider(names_from = model_name, values_from = moran_I) %>%
+  rename('Type' = habitat, 
+         'Point Count' = point_disag, 
+         'Area Search' = area_disag) %>%
+   kable() %>%
+  kable_styling(bootstrap_options = c("hover"), full_width = F) %>%
+  add_header_above(c("Habitat" = 1, "Moran's Index" = 2), 
+                   background = "#4A90C4", color = "white", bold = TRUE) %>%
+  add_header_above(c("Disaggregated Moran's Index Statistics by Survey Method" = 3),  background = "#4A90C4", color = "white", bold = TRUE) %>% 
+  row_spec(0, background = "#4A90C4", color = "white", bold = TRUE) %>%
+  row_spec(seq(1, 7, 2), background = "#8EBEE2") %>%
+  row_spec(seq(2, 6, 2), background = "#D6E8F5") %>%
+  footnote(general = "Moran's Index values near 0 indicate no spatial autocorrelation.")%>% 
+  save_kable(here('Outputs', 'figures',"disag_moran.png"), zoom = 3)
+
+## Disaggregated Moran's Index
+spatial_temporal_tests %>%
+  filter(model_name %in% c('point_agg', 'area_agg')) %>%
+  select(model_name, habitat, moran_I) %>%
+  mutate(habitat = str_to_title(habitat),
+         moran_I = round(moran_I, 3)) %>%
+  pivot_wider(names_from = model_name, values_from = moran_I) %>%
+  rename('Type' = habitat, 
+         'Point Count' = 'point_agg', 
+         'Area Search' = 'area_agg') %>%
+   kable() %>%
+  kable_styling(bootstrap_options = c("hover"), full_width = F) %>%
+  add_header_above(c("Habitat" = 1, "Moran's Index" = 2), 
+                   background = "#4A90C4", color = "white", bold = TRUE) %>%
+  add_header_above(c("Aggregated Moran's Index Statistics by Survey Method" = 3),  background = "#4A90C4", color = "white", bold = TRUE) %>% 
+  row_spec(0, background = "#4A90C4", color = "white", bold = TRUE) %>%
+  row_spec(seq(1, 7, 2), background = "#8EBEE2") %>%
+  row_spec(seq(2, 6, 2), background = "#D6E8F5") %>%
+  footnote(general = "Moran's Index values near 0 indicate no spatial autocorrelation.") %>% 
+  save_kable(here('Outputs', 'figures',"agg_moran.png"), zoom = 3)
+```
+
+## Sample Models 
+
+Next we assessed sample models to see if it improves spatial autocorrelation. We create a grid and sample one point from each grid cell.
+
+```{r}
+#| warning: FALSE
+
+# Grab california boundary from tigris package
+ca_boundary <- states( cb = TRUE, class = "sf") %>% 
+  filter(STUSPS == 'CA') %>% 
+  st_transform(crs = st_crs(birds_joined))
+
+# Create grid
+grid_sf <- ca_boundary %>% 
+  st_make_grid(cellsize = units::set_units(20,km)) %>% 
+  st_intersection(ca_boundary) %>% 
+  # st_intersection returns geometry column, 
+  # convert to sf so it could store cell_id attribute
+  st_as_sf() %>% 
+  st_set_geometry("geometry") %>% 
+  # factor : for more convenient ggplot viz 
+  mutate(cell_id = as.factor(row_number())) %>% 
+  st_transform(crs = "WGS84")
+
+# Make sampled data frame with one sample per cell and year collected
+sample_biodiv_area_search_agg <- birds_joined %>% 
+    filter(survey_type %in% "Area Search")  %>% 
+    gini_simpson()%>% 
+    mutate(protection = ifelse(gap_sts %in% c(1,2), 
+                               'Protected', 'Non-protected')) %>% 
+    st_transform(crs = "WGS84") %>% 
+    st_join(grid_sf, left = FALSE) %>% 
+    slice_sample(n = 1, by = c(cell_id, year_collected))
+  
+# Run base model on sampled data
+  sample_area_agg <- fit_agg(sample_biodiv_area_search_agg)
+  
+  sample_biodiv_point_count_agg <- birds_joined %>% 
+    filter(survey_type %in% "Point Count") %>% 
+    gini_simpson() %>%
+    mutate(protection = ifelse(gap_sts %in% c(1,2), 
+                               'Protected', 'Non-protected'))%>% 
+    st_transform(crs = "WGS84") %>% 
+    st_join(grid_sf, left = FALSE) %>% 
+    slice_sample(n = 1, by = c(cell_id, year_collected))
+  
+  sample_point_agg <- fit_agg(sample_biodiv_point_count_agg)
+  
+  sample_biodiv_area_search_disag <- birds_joined %>% 
+    mutate(gap_sts = as.factor(gap_sts)) %>% 
+    filter(survey_type %in% "Area Search") %>% 
+    gini_simpson() %>% 
+    st_transform(crs = "WGS84") %>% 
+    st_join(grid_sf, left = FALSE) %>% 
+    slice_sample(n = 1, by = c(cell_id, year_collected))
+  
+  sample_area_disag <- fit_disagg(sample_biodiv_area_search_disag) 
+  
+  sample_biodiv_point_count_disag <- birds_joined %>% 
+    mutate(gap_sts = as.factor(gap_sts)) %>% 
+    filter(survey_type %in% "Point Count") %>% 
+    gini_simpson() %>% 
+    st_transform(crs = "WGS84") %>% 
+    st_join(grid_sf, left = FALSE) %>% 
+    slice_sample(n = 1, by = c(cell_id, year_collected))
+  
+ sample_point_disag <- fit_disagg(sample_biodiv_point_count_disag)
+  
+
+models <- list(
+  sample_point_disag  = sample_point_disag,
+  sample_area_disag   = sample_area_disag,
+  sample_point_agg    = sample_point_agg,
+  sample_area_agg     = sample_area_agg
+)
+
+sample_spatial_temporal_tests <- list()
+
+sample_model_data_map <-  list()
+
+sample_model_data_map <- list(
+  sample_point_disag  = sample_biodiv_point_count_disag,
+  sample_area_disag   = sample_biodiv_area_search_disag,
+  sample_point_agg    = sample_biodiv_point_count_agg,
+  sample_area_agg     = sample_biodiv_area_search_agg
+)
+
+
+sample_spatial_temporal_tests <- run_spatial_temporal_tests(
+  models         = models,
+  model_data_map = sample_model_data_map,
+  habitats       = habitats
+)
+
+sample_spatial_temporal_tests
+```
+
+When you examine this, it does not really improve spatial or temporal autocorrelation. However with more computing power you can adjust the grid size and potentially find different results. 
+
+## Adjust models
+
+Next, we adjusted the models. This ended up improving the autocorrelation. 
+```{r}
+#| warning: FALSE
+# Here we do not need to update the data
+
+adj_area_agg <- adj_fit_agg(biodiv_area_search_agg)
+
+adj_point_agg <- adj_fit_agg(biodiv_point_count_agg)
+
+adj_area_disag <- adj_fit_disagg(biodiv_area_search_disag) 
+
+adj_point_disag <- adj_fit_disagg(biodiv_point_count_disag)
+
+adj_bird_summary <- adj_fit_agg(birds_rich)
+
+models <- list(
+  adj_point_disag  = adj_point_disag,
+  adj_area_disag   = adj_area_disag,
+  adj_point_agg    = adj_point_agg,
+  adj_area_agg     = adj_area_agg
+)
+
+adj_spatial_temporal_tests <- list()
+
+model_data_map <- list(
+  adj_point_disag  = biodiv_point_count_disag,
+  adj_area_disag   = biodiv_area_search_disag,
+  adj_point_agg    = biodiv_point_count_agg,
+  adj_area_agg     = biodiv_area_search_agg
+)
+
+
+adj_spatial_temporal_tests <- run_spatial_temporal_tests(
+  models         = models,
+  model_data_map = model_data_map,
+  habitats       = habitats
+)
+
+print(adj_spatial_temporal_tests, n=38)
+```
+# Create model summary of aggregated biodiversity across point and area search
+
+```{r}
+#| warning: FALSE
+
+birds_rich <- gini_simpson(birds_joined)
+
+birds_rich <- birds_rich %>% 
+  mutate(protection = ifelse(gap_sts %in% c(1,2), 'Protected', 'Non-protected'))%>% 
+  # Arrange by observation date descending
+  arrange(desc(observation_date))
+
+habitats <- unique(birds_rich$habitat_type)
+tmp <- vector(mode = 'list', length = 0)
+bird_summary <- vector(mode = 'list', length = 0)
+
+for (i in habitats){
+  
+  tmp[[i]] <- birds_rich %>% 
+    st_drop_geometry() %>% 
+    filter(habitat_type == i)
+  
+  
+  bird_summary[[i]] <- glmmTMB(rich_gini ~ protection, family = beta_family(), data = tmp[[i]])
+}
+```
+
+## Adjusted models kable tables
+
+Here we do not look at Durbin Watson as when we reviewed plots of residuals they showed no temporal autocorrelation.
+
+```{r}
+#| warning: FALSE
+# Disagregated moran's I
+adj_spatial_temporal_tests %>%
+  filter(model_name %in% c('adj_point_disag', 'adj_area_disag')) %>%
+  select(model_name, habitat, moran_I) %>%
+  mutate(habitat = str_to_title(habitat),
+         moran_I = round(moran_I, 3)) %>%
+  pivot_wider(names_from = model_name, values_from = moran_I) %>%
+  rename('Type' = habitat, 
+         'Point Count' = adj_point_disag, 
+         'Area Search' = adj_area_disag) %>%
+   kable() %>%
+  kable_styling(bootstrap_options = c("hover"), full_width = F) %>%
+  add_header_above(c("Habitat" = 1, "Moran's Index" = 2), 
+                   background = "#4A90C4", color = "white", bold = TRUE) %>%
+  add_header_above(c("Disaggregated Moran's Index Statistics by Survey Method" = 3),  background = "#4A90C4", color = "white", bold = TRUE) %>% 
+  row_spec(0, background = "#4A90C4", color = "white", bold = TRUE) %>%
+  row_spec(seq(1, 7, 2), background = "#8EBEE2") %>%
+  row_spec(seq(2, 6, 2), background = "#D6E8F5") %>%
+  footnote(general = "Moran's Index values near 0 indicate no spatial autocorrelation.")%>% 
+  save_kable(here('Outputs', 'figures',"adj_agg_moran.png"), zoom = 3)
+
+# Aggregated Moran's I
+adj_spatial_temporal_tests %>%
+  filter(model_name %in% c('adj_point_agg', 'adj_area_agg')) %>%
+  select(model_name, habitat, moran_I) %>%
+  mutate(habitat = str_to_title(habitat),
+         moran_I = round(moran_I, 3)) %>%
+  pivot_wider(names_from = model_name, values_from = moran_I) %>%
+  rename('Type' = habitat, 
+         'Point Count' = 'adj_point_agg', 
+         'Area Search' = 'adj_area_agg') %>%
+   kable() %>%
+  kable_styling(bootstrap_options = c("hover"), full_width = F) %>%
+  add_header_above(c("Habitat" = 1, "Moran's Index" = 2), 
+                   background = "#4A90C4", color = "white", bold = TRUE) %>%
+  add_header_above(c("Aggregated Moran's Index Statistics by Survey Method" = 3),  background = "#4A90C4", color = "white", bold = TRUE) %>% 
+  row_spec(0, background = "#4A90C4", color = "white", bold = TRUE) %>%
+  row_spec(seq(1, 7, 2), background = "#8EBEE2") %>%
+  row_spec(seq(2, 6, 2), background = "#D6E8F5") %>%
+  footnote(general = "Moran's Index values near 0 indicate no spatial autocorrelation.") %>% 
+  save_kable(here('Outputs', 'figures',"adj_disag_moran.png"), zoom = 3)
+```
 

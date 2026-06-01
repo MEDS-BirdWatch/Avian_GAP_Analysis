@@ -34,6 +34,12 @@ WATER <- "#8EBEE2"
 AGRICULTURE <- "#B5727A"
 'BARREN/OTHER' <- "#FF72DE"
 
+#' point_blue_theme
+#'
+#' @returns The theme used for this project (colors, font, etc.)
+#' @export
+#'
+#' @examples
 point_blue_theme <- function() {
   # Base theme light
   theme_light() +

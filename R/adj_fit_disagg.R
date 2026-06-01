@@ -1,3 +1,13 @@
+#' adj_fit_disagg
+#'
+#'@param dat a data frame containing habitat_type, rich_gini, gap_sts, 
+#' study_area, and year_collected variables
+#'
+#' @returns
+#' A model with a gamma distribution as in the glmm_tmb package
+#' @export
+#'
+#' @examples
 adj_fit_disagg <- function(dat) {
   habitats <- unique(dat$habitat_type)
   model <- vector(mode = 'list', length = 0)

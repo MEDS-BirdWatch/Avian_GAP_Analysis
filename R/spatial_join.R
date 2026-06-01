@@ -1,4 +1,5 @@
 # Script for initial data import, cleaning, and joining
+# Start all analysis here
 
 
 #----------------------------- Load libraries ----------------------------------
