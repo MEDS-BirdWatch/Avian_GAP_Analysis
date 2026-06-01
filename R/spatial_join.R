@@ -15,6 +15,11 @@ library(arrow) #23.0.1.2
 library(sfarrow) #0.4.1
 #-------------------------------------------------------------------------------
 
+#--------------------------Source Rich Gini-------------------------------------
+source('R/rich_gini.R')
+
+#-------------------------------------------------------------------------------
+
 #---------------------Create Processed data folder (if none exists)------------
 ifelse(dir.exists(here("data", "data_processed")),
        print("Directory: data_processed exists"),
@@ -185,7 +190,8 @@ birds_joined <- birds_joined %>%
   mutate(protection_sts = case_when(
     gap_sts %in% c(3,4,5) ~ 'unprotected',
     TRUE~ 'protected'
-  ))
+  )) %>% 
+  gini_simpson()
   
   # Sample Effort ----
 # geom <- st_geometry(birds_joined)

@@ -52,11 +52,6 @@ We first tested our base models and assessed for temporal and spatial autocorrel
 biodiv_area_search_agg <- birds_joined %>% 
   # Filter for survey type to separate them
     filter(survey_type %in% "Area Search")  %>%
-  # Run gini_simpson 
-    gini_simpson()%>% 
-  # Aggregate by protection
-    mutate(protection = ifelse(gap_sts %in% c(1,2), 
-                               'Protected', 'Non-protected')) %>% 
   # Arrange for durbin watson
     arrange(desc(observation_date))
   
@@ -66,17 +61,12 @@ biodiv_area_search_agg <- birds_joined %>%
 # Repeat for aggregated, disagregated
   biodiv_point_count_agg <- birds_joined %>% 
     filter(survey_type %in% "Point Count") %>% 
-    gini_simpson() %>%
-    mutate(protection = ifelse(gap_sts %in% c(1,2), 
-                               'Protected', 'Non-protected'))%>% 
     arrange(desc(observation_date))
   
   point_agg <- fit_agg(biodiv_point_count_agg)
   
   biodiv_area_search_disag <- birds_joined %>% 
     mutate(gap_sts = as.numeric(gap_sts)) %>% 
-    filter(survey_type %in% "Area Search") %>% 
-    gini_simpson()%>% 
     arrange(desc(observation_date))
   
   area_disag <- fit_disagg(biodiv_area_search_disag) 
@@ -84,7 +74,6 @@ biodiv_area_search_agg <- birds_joined %>%
   biodiv_point_count_disag <- birds_joined %>% 
     mutate(gap_sts = as.numeric(gap_sts)) %>% 
     filter(survey_type %in% "Point Count") %>% 
-    gini_simpson() %>% 
     arrange(desc(observation_date))
   
  point_disag <- fit_disagg(biodiv_point_count_disag)
@@ -92,9 +81,6 @@ biodiv_area_search_agg <- birds_joined %>%
   
  # This is for a general summary (not separating by survey type)
   birds_rich <- birds_joined %>%  
-    gini_simpson() %>% 
-    mutate(protection = ifelse(gap_sts %in% c(1,2), 
-                               'Protected', 'Non-protected'))%>% 
     arrange(desc(observation_date))
   
   bird_summary <- fit_agg(birds_rich)
@@ -250,9 +236,6 @@ grid_sf <- ca_boundary %>%
 # Make sampled data frame with one sample per cell and year collected
 sample_biodiv_area_search_agg <- birds_joined %>% 
     filter(survey_type %in% "Area Search")  %>% 
-    gini_simpson()%>% 
-    mutate(protection = ifelse(gap_sts %in% c(1,2), 
-                               'Protected', 'Non-protected')) %>% 
     st_transform(crs = "WGS84") %>% 
     st_join(grid_sf, left = FALSE) %>% 
     slice_sample(n = 1, by = c(cell_id, year_collected))
@@ -262,9 +245,6 @@ sample_biodiv_area_search_agg <- birds_joined %>%
   
   sample_biodiv_point_count_agg <- birds_joined %>% 
     filter(survey_type %in% "Point Count") %>% 
-    gini_simpson() %>%
-    mutate(protection = ifelse(gap_sts %in% c(1,2), 
-                               'Protected', 'Non-protected'))%>% 
     st_transform(crs = "WGS84") %>% 
     st_join(grid_sf, left = FALSE) %>% 
     slice_sample(n = 1, by = c(cell_id, year_collected))
@@ -273,8 +253,7 @@ sample_biodiv_area_search_agg <- birds_joined %>%
   
   sample_biodiv_area_search_disag <- birds_joined %>% 
     mutate(gap_sts = as.factor(gap_sts)) %>% 
-    filter(survey_type %in% "Area Search") %>% 
-    gini_simpson() %>% 
+    filter(survey_type %in% "Area Search") %>%
     st_transform(crs = "WGS84") %>% 
     st_join(grid_sf, left = FALSE) %>% 
     slice_sample(n = 1, by = c(cell_id, year_collected))
@@ -284,7 +263,6 @@ sample_biodiv_area_search_agg <- birds_joined %>%
   sample_biodiv_point_count_disag <- birds_joined %>% 
     mutate(gap_sts = as.factor(gap_sts)) %>% 
     filter(survey_type %in% "Point Count") %>% 
-    gini_simpson() %>% 
     st_transform(crs = "WGS84") %>% 
     st_join(grid_sf, left = FALSE) %>% 
     slice_sample(n = 1, by = c(cell_id, year_collected))
@@ -369,10 +347,7 @@ print(adj_spatial_temporal_tests, n=38)
 ```{r}
 #| warning: FALSE
 
-birds_rich <- gini_simpson(birds_joined)
-
-birds_rich <- birds_rich %>% 
-  mutate(protection = ifelse(gap_sts %in% c(1,2), 'Protected', 'Non-protected'))%>% 
+birds_rich <- birds_joined %>% 
   # Arrange by observation date descending
   arrange(desc(observation_date))
 
