@@ -28,6 +28,7 @@ habitat_poly <- st_read_parquet(here('data','data_processed',
 gap_clean <- st_read_parquet(here('data','data_processed', 
                                   'gap_polygon.parquet'))
 source(here("R", "point_blue_theme.R"))
+source(here("R", "rich_gini.R"))
 showtext_auto(enable = TRUE)
 
 ```
@@ -115,35 +116,65 @@ ggplot(aes(x = gap_sts, y = observations, color = survey_type,
 ## Observations by habitat type
 
 ```{r}
-birds_joined %>% 
+habitat_obs_area <- birds_joined %>% 
+  filter(survey_type == "Area Search") %>% 
   group_by(habitat_type, survey_type) %>% 
   summarise(observations = sum(observation_count, na.rm = TRUE), .groups = "drop") %>% 
   mutate(habitat_type = reorder(habitat_type, observations)) %>% 
-  ggplot(aes(x = observations, y = habitat_type, fill = habitat_type)) +
-  geom_col() +
-  scale_x_continuous(label = scales::comma) +
-  scale_fill_manual(values = c(URBAN, AGRICULTURE, CONIFER, HERBACEOUS, SHRUB, HARDWOOD, WATER)) +
-  scale_color_manual(values = c(URBAN, AGRICULTURE, CONIFER, HERBACEOUS, SHRUB, HARDWOOD, WATER)) +
+  ggplot(aes(x = observations, y = habitat_type)) +
+  geom_col(fill = point_blue) +
+  scale_x_continuous(label = scales::comma, expand = c(0, 0), limits = c(0, 800000)) +
   point_blue_theme() +
   theme(legend.position = "none") +
   labs(y = 'Observations', 
        x = 'Habitat Type', 
-       title = 'Observations by Habitat')
+       title = 'Observations by Habitat in Area Searches')
+
+
+habitat_obs_point <- birds_joined %>% 
+  filter(survey_type == "Point Count") %>% 
+  group_by(habitat_type, survey_type) %>% 
+  summarise(observations = sum(observation_count, na.rm = TRUE), .groups = "drop") %>% 
+  mutate(habitat_type = reorder(habitat_type, observations)) %>% 
+  ggplot(aes(x = observations, y = habitat_type)) +
+  geom_col(fill = point_blue) +
+  scale_x_continuous(label = scales::comma, expand = c(0, 0), limits = c(0, 800000)) +
+  point_blue_theme() +
+  theme(legend.position = "none") +
+  labs(y = 'Observations', 
+       x = 'Habitat Type', 
+       title = 'Observations by Habitat in Point Count')
+
+habitat_obs_area / habitat_obs_point
 ```
 
 ## Observations by county 
 ```{r}
-counties <- st_read(here::here('data','tl_2025_us_county', 
-                               'tl_2025_us_county.shp')) %>% 
+counties <- tigris::counties() %>% 
   clean_names() %>% 
   filter(statefp == '06') %>% 
   mutate(area = (aland+awater)* 1e-6) %>% 
   select(namelsad, area) %>% 
   st_transform(crs(birds_joined))
 
-point_area_obs <- birds_joined %>% 
+
+total_observations <- birds_joined %>% 
   select(observation_count) 
   
+county_obs <- total_observations %>%
+  st_join(counties %>% select(namelsad, area)) %>%  # join county info onto points
+  st_drop_geometry() %>%
+  group_by(namelsad) %>%
+  summarize(
+    total_observations = sum(observation_count, na.rm = TRUE),
+    area = first(area)
+  ) %>%
+  mutate(
+    total_observations = replace_na(total_observations, 0),
+    density = total_observations / area
+  ) %>%
+  arrange(desc(density))
+
 
 point_area_county <- st_join(counties, point_area_obs) %>% 
   st_drop_geometry() %>% 
@@ -170,41 +201,63 @@ county_obs_plot <- ggplot(county_obs)+
   theme(legend.position = 'none')
 
 ggsave(here('Outputs', 'figures', 'county_obs_plot.png'), county_obs_plot, scale = 1, width = 10, height = 10)
+
+
+county_obs %>%
+  rename(
+    "County Name" = namelsad,
+    "Total Observations" = total_observations,
+    "Area (km²)" = area,
+    "Density (#/km²)" = density
+  ) %>%
+  head(20) %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover")) %>%
+  row_spec(0, background = point_blue)
+
 ```
+
+## County observation map
+```{r}
+county_obs_map <- counties %>%
+  left_join(county_obs, by = "namelsad")
+
+ggplot(county_obs_map) +
+  geom_sf(aes(fill = density), color = "black", linewidth = 0.2) +
+  scale_fill_gradient(
+  low = point_light_blue2,
+  high = "#1a5276",
+  name = "Observations/km²",
+  na.value = "grey90",
+  guide = guide_colorbar(barwidth = 15, barheight = 0.5)
+)+
+  point_blue_theme() +
+  theme(axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        panel.grid = element_blank()
+        ) +
+  labs(
+    title = "Bird Observations Are Concentrated in Northern California",
+    subtitle = "Observation density by county"
+  )
+```
+
+
 
 ```{r}
-other_names <- county_obs %>% 
-  filter(total_obs == 0) %>% 
+sts_biodiv <- birds_joined %>% 
+  gini_simpson() %>% 
   st_drop_geometry() %>% 
-  pull(namelsad)
+  group_by(year_collected, protection_sts) %>% 
+  mutate(protection_sts = case_when(
+  protection_sts == 'protected' ~ "30x30 protected",
+  protection_sts == 'unprotected' ~ "non 30x30 protected"
+)) %>% 
+  summarize(avg_biod = mean(rich_gini / sample_effort, na.rm = TRUE), .groups = "drop")
 
-county_obs_corrected <- county_obs %>% 
-  filter(total_obs>0)
-
-county_obs_corrected %>% 
-  st_drop_geometry() %>% 
-  arrange(desc(density))%>%
-  rename('County Name' = namelsad,
-         'Density' = density,
-         'Total Observations' = total_obs) %>% 
-  kable(format = "html", digits = 3, longtable = TRUE) %>% 
-  kable_styling(
-    bootstrap_options = c("striped", "hover", "condensed", "responsive"),
-    full_width = FALSE,
-    position = "center",
-    font_size = 14
-  ) %>% 
-  footnote(general = paste("Dropped:", 
-                           paste(other_names, collapse = ", "), 
-                           'due to lack of observations')) %>% 
-  row_spec(0, bold = TRUE, color = "black", background = "#4392CE") %>%
-  row_spec(seq(1, nrow(county_obs_corrected), 2), 
-           color = "black", 
-           background = "#74B444") %>%
-  row_spec(seq(2, nrow(county_obs_corrected), 2), color = "black", background = "#A8D175")%>%
-  save_kable(here::here('Outputs', 'figures', "county_density_table.png"), zoom = 4)
 ```
 
+<<<<<<< HEAD
 ## Habitat Complexity
 
 ```{r}
@@ -346,5 +399,95 @@ lookup_habitat %>%
   save_kable(here('Outputs', 'figures',"Habitat_Types_table.png"), zoom = 3)
 ```
 
+
+
+
+
+# Annual biodiversity averages model (simplified overview of protection effect and trends)
+```{r}
+mod_prot_main <- glm(
+  avg_biod ~ year_collected + protection_sts,
+  data = sts_biodiv,
+  family = Gamma(link = "log")
+)
+summary(mod_prot_main)
+
+
+# Check significance of each term
+prot_coefs <- coef(summary(mod_prot_main))
+year_sig <- prot_coefs["year_collected", "Pr(>|t|)"] < 0.05
+prot_sig <- prot_coefs["protection_stsnon 30x30 protected", "Pr(>|t|)"] < 0.05
+
+# Generate predictions if either term is significant
+prot_preds_main <- if (year_sig | prot_sig) {
+  expand.grid(
+    year_collected = seq(
+      min(sts_biodiv$year_collected),
+      max(sts_biodiv$year_collected),
+      length.out = 100
+    ),
+    protection_sts = unique(sts_biodiv$protection_sts)
+  ) %>%
+    mutate(avg_biod = predict(mod_prot_main, newdata = ., type = "response")) %>%
+    filter(
+      (protection_sts == "protected") |
+        prot_sig  # drop unprotected line if prot not sig
+    )
+} else {
+  tibble(
+    year_collected = numeric(),
+    avg_biod = numeric(),
+    protection_sts = character()
+  )
+}
+
+
+avg_biodiv_protection_plot <- ggplot(
+  sts_biodiv,
+  aes(
+    x = year_collected,
+    y = avg_biod,
+    color = protection_sts,
+    fill = protection_sts
+  )
+) +
+  geom_point(alpha = 0.5,
+             size = 4,
+             shape = 21) +
+  {
+    if (nrow(prot_preds_main) > 0)
+      geom_line(
+        data = prot_preds_main,
+        aes(x = year_collected, y = avg_biod, color = protection_sts),
+        linewidth = 1.2,
+        inherit.aes = FALSE
+      )
+  } +
+  scale_color_manual(values = c(
+    "30x30 protected" = "#558731",
+    "non 30x30 protected" = URBAN
+  )) +
+  scale_fill_manual(values = c(
+    "30x30 protected" = "#558731",
+    "non 30x30 protected" = URBAN
+  )) +
+  point_blue_theme() +
+  labs(
+    x = "Year",
+    y = "Biodiversity Index Value",
+    title = "Protected Areas Support Greater Bird Biodiversity",
+    subtitle = "Average biodiversity from 1990–2025 across AKN survey sites",
+    color = "Protection Status",
+    fill = "Protection Status"
+  )
+
+ggsave(
+  filename = here::here("Outputs", "figures", "avg_biodiv_protection_plot.pdf"),
+  plot = avg_biodiv_protection_plot,
+  width = 10,
+  height = 8,
+  device = cairo_pdf  # better font rendering in PDFs
+)
+```
 
 
