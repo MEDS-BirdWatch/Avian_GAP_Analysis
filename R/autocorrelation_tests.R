@@ -18,6 +18,7 @@ run_spatial_temporal_tests <- function(models, model_data_map, habitats) {
       mf$.res <- res
       mf$.row <- as.integer(rownames(mf))
       
+      
       dat <- model_data_map[[model_name]] %>%
         filter(habitat_type == i) %>%
         mutate(.row = row_number()) %>%
@@ -28,6 +29,24 @@ run_spatial_temporal_tests <- function(models, model_data_map, habitats) {
         message("No data found in model_data_map for: ", model_name, " — check names match")
         next
       }
+      
+      beta <- tryCatch(fixef(model)$cond[2], 
+                       error = function(e) {
+        tryCatch(coef(model)[2], 
+                 error = function(e2) NA_real_)
+      })
+      
+      disp <- tryCatch(sigma(model), 
+                       error = function(e) {
+        tryCatch(summary(model)$dispersion, 
+                 error = function(e2) NA_real_)
+      })
+      
+      sd <- tryCatch(summary(model)$coefficients$cond[2, 2], 
+                     error = function(e) {
+        tryCatch(summary(model)$coefficients[2, 2], 
+                 error = function(e2) NA_real_)
+      })
       
       dat_site <- dat %>%
         group_by(study_area) %>%
@@ -54,7 +73,10 @@ run_spatial_temporal_tests <- function(models, model_data_map, habitats) {
         habitat    = i,
         dw         = as.numeric(dw_stat),
         moran_I    = as.numeric(moran_I),
-        moran_p    = as.numeric(moran_p)
+        moran_p    = as.numeric(moran_p),
+        sd = sd,
+        beta = beta,
+        dispersion = disp
       ))
     }
   }

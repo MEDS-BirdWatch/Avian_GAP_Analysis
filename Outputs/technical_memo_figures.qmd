@@ -176,16 +176,19 @@ county_obs %>%
     "Area (km²)" = area,
     "Density (#/km²)" = density
   ) %>%
+  head(20) %>% 
   kable() %>%
   kable_styling(bootstrap_options = c("striped", "hover")) %>%
-  row_spec(0, background = point_light_blue1) 
+  row_spec(0, background = point_blue)
 ```
+
+## County observation map
 ```{r}
 county_obs_map <- counties %>%
   left_join(county_obs, by = "namelsad")
 
 ggplot(county_obs_map) +
-  geom_sf(aes(fill = density), color = "white", linewidth = 0.2) +
+  geom_sf(aes(fill = density), color = "black", linewidth = 0.2) +
   scale_fill_gradient(
   low = point_light_blue2,
   high = "#1a5276",
@@ -196,106 +199,115 @@ ggplot(county_obs_map) +
   point_blue_theme() +
   theme(axis.text = element_blank(),
         axis.ticks = element_blank(),
-        panel.grid = element_blank()) +
+        panel.grid = element_blank()
+        ) +
   labs(
     title = "Bird Observations Are Concentrated in Northern California",
     subtitle = "Observation density by county"
   )
 ```
 
-```{r}
-# Create calculation to deduct for sampling effort 
-yearly_biodiv <- birds_joined %>% 
-  gini_simpson() %>% 
-  st_drop_geometry() %>% 
-  group_by(year_collected, survey_type) %>% 
-  summarize(avg_biod = weighted.mean(rich_gini, w = sample_effort, na.rm = TRUE))
 
-ggplot(yearly_biodiv, aes(x = year_collected, y = avg_biod, color = survey_type, fill = survey_type)) +
-  geom_point(alpha = 0.7, size = 2, shape = 21) +
-  geom_smooth(method = "lm", se = FALSE, linewidth = 1.2) +
-  scale_color_manual(
-    values = c("Area Search" = point_blue, "Point Count" = orange),
-    labels = c("Area Search", "Point Count")
-  ) +
-  scale_fill_manual(
-    values = c("Area Search" = point_blue, "Point Count" = orange),
-    labels = c("Area Search", "Point Count")
-  ) +
-  scale_y_continuous(expand = c(0, 0)) +
-  point_blue_theme() +
-  theme(
-    axis.text.y = element_blank(),  # Removes the numbers
-    axis.ticks.y = element_blank()   # Removes the tick marks
-  )+
-  labs(
-    x = "Year",
-    y = "Biodiversity",
-    title = "Biodiversity Has Remained Stable Over 35 Years",
-    subtitle = "Point counts consistently detect greater diversity than area searches",
-    color = "Survey Type",
-    fill = "Survey Type"
-  )
-```
 
 ```{r}
 sts_biodiv <- birds_joined %>% 
   gini_simpson() %>% 
   st_drop_geometry() %>% 
   group_by(year_collected, protection_sts) %>% 
+  mutate(protection_sts = case_when(
+  protection_sts == 'protected' ~ "30x30 protected",
+  protection_sts == 'unprotected' ~ "non 30x30 protected"
+)) %>% 
   summarize(avg_biod = mean(rich_gini / sample_effort, na.rm = TRUE), .groups = "drop")
 
-ggplot(sts_biodiv, aes(x = year_collected, y = avg_biod, color = protection_sts, fill = protection_sts)) +
-  geom_point(alpha = 0.5, size = 2, shape = 21) +
-  geom_smooth(method = "lm", se = FALSE, linewidth = 1.2) +
-  scale_color_manual(values = c("protected" = point_green, "unprotected" = URBAN)) +
-  scale_fill_manual(values = c("protected" = point_green, "unprotected" = URBAN)) +
-  scale_y_continuous(expand = c(0.02, 0)) +
+```
+
+
+# Annual biodiversity averages model (simplified overview of protection effect and trends)
+```{r}
+mod_prot_main <- glm(
+  avg_biod ~ year_collected + protection_sts,
+  data = sts_biodiv,
+  family = Gamma(link = "log")
+)
+summary(mod_prot_main)
+
+
+# Check significance of each term
+prot_coefs <- coef(summary(mod_prot_main))
+year_sig <- prot_coefs["year_collected", "Pr(>|t|)"] < 0.05
+prot_sig <- prot_coefs["protection_stsnon 30x30 protected", "Pr(>|t|)"] < 0.05
+
+# Generate predictions if either term is significant
+prot_preds_main <- if (year_sig | prot_sig) {
+  expand.grid(
+    year_collected = seq(
+      min(sts_biodiv$year_collected),
+      max(sts_biodiv$year_collected),
+      length.out = 100
+    ),
+    protection_sts = unique(sts_biodiv$protection_sts)
+  ) %>%
+    mutate(avg_biod = predict(mod_prot_main, newdata = ., type = "response")) %>%
+    filter(
+      (protection_sts == "protected") |
+        prot_sig  # drop unprotected line if prot not sig
+    )
+} else {
+  tibble(
+    year_collected = numeric(),
+    avg_biod = numeric(),
+    protection_sts = character()
+  )
+}
+
+
+avg_biodiv_protection_plot <- ggplot(
+  sts_biodiv,
+  aes(
+    x = year_collected,
+    y = avg_biod,
+    color = protection_sts,
+    fill = protection_sts
+  )
+) +
+  geom_point(alpha = 0.5,
+             size = 4,
+             shape = 21) +
+  {
+    if (nrow(prot_preds_main) > 0)
+      geom_line(
+        data = prot_preds_main,
+        aes(x = year_collected, y = avg_biod, color = protection_sts),
+        linewidth = 1.2,
+        inherit.aes = FALSE
+      )
+  } +
+  scale_color_manual(values = c(
+    "30x30 protected" = "#558731",
+    "non 30x30 protected" = URBAN
+  )) +
+  scale_fill_manual(values = c(
+    "30x30 protected" = "#558731",
+    "non 30x30 protected" = URBAN
+  )) +
   point_blue_theme() +
-  theme(
-    axis.text.y = element_blank(),  # Removes the numbers
-    axis.ticks.y = element_blank()   # Removes the tick marks
-  )+
   labs(
     x = "Year",
-    y = "Biodiversity",
+    y = "Biodiversity Index Value",
     title = "Protected Areas Support Greater Bird Biodiversity",
-    subtitle = "Trend from 1990–2025 across AKN survey sites",
+    subtitle = "Average biodiversity from 1990–2025 across AKN survey sites",
     color = "Protection Status",
     fill = "Protection Status"
   )
+
+ggsave(
+  filename = here::here("Outputs", "figures", "avg_biodiv_protection_plot.pdf"),
+  plot = avg_biodiv_protection_plot,
+  width = 10,
+  height = 8,
+  device = cairo_pdf  # better font rendering in PDFs
+)
 ```
 
-```{r}
-other_names <- county_obs %>%
-  filter(total_obs == 0) %>%
-  st_drop_geometry() %>%
-  pull(namelsad)
-
-county_obs_corrected <- county_obs %>%
-  filter(total_obs>0)
-
-county_obs_corrected %>%
-  st_drop_geometry() %>%
-  arrange(desc(density))%>%
-  rename('County Name' = namelsad,
-         'Density' = density,
-         'Total Observations' = total_obs) %>%
-  kable(format = "html", digits = 3, longtable = TRUE) %>%
-  kable_styling(
-    bootstrap_options = c("striped", "hover", "condensed", "responsive"),
-    full_width = FALSE,
-    position = "center",
-    font_size = 14
-  ) %>%
-  footnote(general = paste("Dropped:",
-                           paste(other_names, collapse = ", "),
-                           'due to lack of observations')) %>%
-  row_spec(0, bold = TRUE, color = "black", background = "#4392CE") %>%
-  row_spec(seq(1, nrow(county_obs_corrected), 2),
-           color = "black",
-           background = "#74B444") %>%
-  row_spec(seq(2, nrow(county_obs_corrected), 2), color = "black", background = "#A8D175")%>%
-  save_kable(here::here('Outputs', 'figures', "county_density_table.png"), zoom = 4)
-```
 
