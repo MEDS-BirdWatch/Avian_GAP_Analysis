@@ -489,5 +489,85 @@ ggsave(
   device = cairo_pdf  # better font rendering in PDFs
 )
 ```
+## Focal species observations
+```{r}
+# Load in focal species data
+focal_species_data <- readRDS(here("data", "data_processed", "focal_species.rds"))
+
+# Create observation table 
+obs_table <- focal_species_data %>%
+  st_drop_geometry() %>%
+  group_by(common_name) %>%
+  # Count number of rows/obs per species 
+  summarise(
+    n_protected   = sum(protection_sts == "protected"),
+    n_unprotected = sum(protection_sts == "unprotected"),
+    n_gap1 = sum(gap_sts == 1, na.rm = TRUE),
+    n_gap2 = sum(gap_sts == 2, na.rm = TRUE),
+    n_gap3 = sum(gap_sts == 3, na.rm = TRUE),
+    n_gap4 = sum(gap_sts == 4, na.rm = TRUE),
+    n_gap5 = sum(gap_sts == 5, na.rm = TRUE),
+    total  = n(),
+    .groups = "drop"
+  )
+# Gt summary formatting 
+n_rows <- nrow(obs_table)
+
+obs_gt_tbl <- obs_table %>%
+  gt() %>%
+  tab_spanner(label = "Aggregated",
+              columns = c(n_protected, n_unprotected)) %>%
+  tab_spanner(label = "Disaggregated (GAP Status)",
+              columns = c(n_gap1, n_gap2, n_gap3, n_gap4, n_gap5)) %>%
+  cols_label(
+    common_name   = "Species",
+    n_protected   = "Protected",
+    n_unprotected = "Unprotected",
+    n_gap1        = "GAP 1",
+    n_gap2        = "GAP 2",
+    n_gap3        = "GAP 3",
+    n_gap4        = "GAP 4",
+    n_gap5        = "GAP 5",
+    total         = "Total"
+  ) %>%
+  tab_style(
+    style = list(cell_fill(color = point_blue),
+                 cell_text(color = point_light_blue2, weight = "bold")),
+    locations = cells_column_labels(everything())
+  ) %>%
+  tab_style(
+    style = list(cell_fill(color = point_blue),
+                 cell_text(color = point_light_blue2, weight = "bold")),
+    locations = cells_column_spanners(everything())
+  ) %>%
+  tab_style(
+    style = cell_fill(color = point_light_blue1),
+    locations = cells_body(rows = seq(1, n_rows, 2))
+  ) %>%
+  tab_style(
+    style = cell_fill(color = point_light_blue2),
+    locations = cells_body(rows = seq(2, n_rows, 2))
+  ) %>%
+  tab_style(
+    style = cell_text(style = "italic"),
+    locations = cells_body(columns = common_name)
+  ) %>%
+  tab_options(
+    table.border.top.style    = "hidden",
+    table.border.bottom.style = "solid",
+    column_labels.border.bottom.style = "solid",
+    table_body.hlines.style   = "none"
+  ) %>%
+  tab_source_note("Note: n = number of survey records. Values of 0 indicate no observations for that GAP level.")
+
+# View gt table of observations
+obs_gt_tbl
+
+# Save gt table
+gtsave(obs_gt_tbl, 
+       here::here("Outputs", "figures", "obs_summary_table.png"), 
+       zoom = 3)
+
+```
 
 
