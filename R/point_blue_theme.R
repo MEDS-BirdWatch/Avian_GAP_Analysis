@@ -1,7 +1,5 @@
 # Load in necessary libraries
 library(tidyverse)
-library(terra)
-library(tidyterra)
 library(here)
 library(tmap)
 library(janitor)
