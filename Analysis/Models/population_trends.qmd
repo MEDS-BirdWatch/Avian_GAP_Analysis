@@ -5,9 +5,6 @@ execute:
   echo: false
   warning: false
   cache: true   
-editor: 
-  markdown: 
-    wrap: sentence
 ---
 
 ## Focal species models
