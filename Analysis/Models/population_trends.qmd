@@ -5,17 +5,29 @@ execute:
   echo: false
   warning: false
   cache: true   
+editor: 
+  markdown: 
+    wrap: sentence
 ---
-## Focal species models
-In this workflow we will perform the following:
-1. Define our focal species from our `indicator_analysis.qmd` workflow. The species produced in the `focal_species` dataframe were then sent to Point Blue staff scientists for further guidance on determining our focal species. 
-2. Run model fit diagnostics checks. 
-3. Run negative binomial GLMMM model for aggregated data where protection status is determined by protected (GAP status 1 - 2) and unprotected (GAP status 3-5). 
-4. Run negative binomial GLMM model for disaggregated data with all GAP status protection levels.
-5. Summarize results with a gt summary. 
-6. Visualize trends with `ggeffects` package. 
 
-## Set-Up 
+## Focal species models
+
+In this workflow we will perform the following: 1.
+Define our focal species from our `indicator_analysis.qmd` workflow.
+The species produced in the `focal_species` dataframe were then sent to Point Blue staff scientists for further guidance on determining our focal species.
+2.
+Run model fit diagnostics checks.
+3.
+Run negative binomial GLMMM model for aggregated data where protection status is determined by protected (GAP status 1 - 2) and unprotected (GAP status 3-5).
+4.
+Run negative binomial GLMM model for disaggregated data with all GAP status protection levels.
+5.
+Summarize results with a gt summary.
+6.
+Visualize trends with `ggeffects` package.
+
+## Set-Up
+
 ```{r}
 #| label: set-up
 # Load environment 
@@ -51,7 +63,8 @@ birds_joined <- st_read_parquet(here("data","data_processed","birds_joined.parqu
 
 ```
 
-## Focal Species Data 
+## Focal Species Data
+
 ```{r}
 # MANUAL STEP — update from indicator analysis outputs
 
@@ -80,17 +93,24 @@ focal_species <- data.frame(
 # Apply function to extract individual species data from `birds_joined` 
 focal_species_data <- population_trends(data = birds_joined, species_list = focal_species)
 
+# Save as RDS file
+saveRDS(focal_species_data, file = here("data", "data_processed", "focal_species.rds"))
+
 ```
 
 ## Diagnostic checks
-In this section, model diagnostics are run to determine the most optimal model for this species subset. The most optimal model is chosen as the model with the smallest AIC between Poisson and Negative binomial type II. Poisson and Negative binomial are ideal for data with high levels of overdispersion. 
+
+In this section, model diagnostics are run to determine the most optimal model for this species subset.
+The most optimal model is chosen as the model with the smallest AIC between Poisson and Negative binomial type II.
+Poisson and Negative binomial are ideal for data with high levels of overdispersion.
+
 ```{r}
 # Per-species family selection + dispersion diagnostics
 model_diagnostics <- list()
 
-for (i in unique(focal_species_data$common_name)) {
+for (sp in unique(focal_species_data$common_name)) {
   # Seperate df by species
-  species_df <- focal_species_data %>% filter(common_name == i)
+  species_df <- focal_species_data %>% filter(common_name == sp)
   # Poisson model 
   m_pois <- glmmTMB(total_obs ~ year_scaled * protection_sts + offset(log(sample_effort)) + (1|study_area),
                     family = poisson,  data = species_df)
@@ -106,8 +126,8 @@ for (i in unique(focal_species_data$common_name)) {
   n <- nobs(best_model)
   p <- length(fixef(best_model)$cond)
   # Create dataframe of model diagnositcs per species
-  model_diagnostics[[i]] <- data.frame(
-    species          = i,
+  model_diagnostics[[sp]] <- data.frame(
+    species          = sp,
     best_family      = c("poisson","nb2")[which.min(c(AIC(m_pois), AIC(m_nb2)))],
     aic_poisson      = AIC(m_pois),
     aic_nb2          = AIC(m_nb2),
@@ -117,27 +137,11 @@ for (i in unique(focal_species_data$common_name)) {
 }
 # Bind model diagnostics per species to one dataframe 
 model_fit_df <- bind_rows(model_diagnostics)
+
 model_fit_df
 ```
 
-## Models -- Aggregated/Protection 
-
-The following negative binomial generalized linear mixed model (GLMM) was fit 
-for each focal species:
-
-$$
-\log(\mu_{ij}) = \beta_0 + \beta_1 \text{Year}_{ij} + \beta_2 \text{Unprotected}_{ij} + 
-\beta_3 (\text{Year}_{ij} \times \text{Unprotected}_{ij}) + 
-\log(\text{Effort}_{ij}) + u_j
-$$
-
-- $\mu_{ij}$ = expected count for observation
-- $\beta_0$ = intercept (protected sites baseline)
-- $\beta_1$ = annual trend in protected sites
-- $\beta_2$ = baseline difference between unprotected and protected sites
-- $\beta_3$ = difference in annual trend between unprotected and protected sites (interaction)
-- $\log(\text{Effort}_{ij})$ = offset for survey effort (minutes)
-- $u_j \sim \mathcal{N}(0, \sigma^2_u)$ = random intercept for study area
+## Models -- Aggregated/Protection
 
 ```{r}
 # Define list 
@@ -158,7 +162,9 @@ lapply(results_ag, summary)
 ```
 
 ### Autocorrelation test - Aggregated Model
-In this section spatial and temporal autocorrelation was tested on the `results_ag` model wih the Moran's Index and Durbin Watson. 
+
+In this section spatial and temporal autocorrelation was tested on the `results_ag` model with the Moran's Index and Durbin Watson. 
+
 ```{r}
 # ---- Test Autocorrelation ----
 model_data_map <- list()
@@ -168,33 +174,19 @@ for (sp in names(results_ag)) {
     filter(common_name == sp) %>%
     mutate(habitat_type = "all")
 }
-
+# Iterate across all models stored in results_ag
 models <- lapply(results_ag, function(m) list(all = m))
 
+# Run autocor function 
 model_autocorr_results <- run_spatial_temporal_tests(models, model_data_map, habitats = "all")
 
 model_autocorr_results
 
-
 ```
 
 ## Models -- Disaggregated/GAP
-The following negative binomial GLMM was fit for each focal species across GAP status levels:
-
-$$
-\log(\mu_{ij}) = \beta_0 + \beta_1 \text{Year}_{ij} + 
-\sum_{k} \gamma_k \text{GAP}_{k,ij} + 
-\sum_{k} \delta_k (\text{Year}_{ij} \times \text{GAP}_{k,ij}) + 
-\log(\text{Effort}_{ij}) + u_j
-$$
 
 ```{r}
-# What are the number of observations per species per GAP level? 
-# This will determine if the model will break
-gap_data <- focal_species_data %>% 
-  st_drop_geometry() %>%
-  count(common_name, gap_sts)
-
 # Define list 
 results_disag <- list()
 
@@ -213,6 +205,7 @@ for (sp in unique(focal_species_data$common_name)) {
 lapply(results_disag, summary)
 
 ```
+
 ### Autocorrelation test - Disaggregated Model
 ```{r}
 # ---- Test Autocorrelation ----
@@ -224,18 +217,21 @@ for (sp in names(results_disag)) {
     mutate(habitat_type = "all")
 }
 
+# Iterate across all models stored in results_disag
 models <- lapply(results_disag, function(m) list(all = m))
 
+# Run autocorrelation function 
 model_autocorr_results <- run_spatial_temporal_tests(models, model_data_map, habitats = "all")
 
 model_autocorr_results
 ```
 
+## Population Trend Coefficients and Marginal Effects
 
-##  Population Trend Coefficients and Marginal Effects
-In this section, population trend coefficients were extracted from each model with `broom.mixed::tidy()`. The annual unprotected trend was estimated from the `marginaleffects` package using the `avg_slopes()` function. 
+In this section, population trend coefficients were extracted from each model with `broom.mixed::tidy()`.The annual unprotected trend was estimated from the `marginaleffects` package using the `avg_slopes()` function.
 
-### Aggregated GT summary 
+### Aggregated GT summary
+
 ```{r}
 # Raw coefficients (protected + interaction)
 raw_coef_table <- map_dfr(results_ag, ~ broom.mixed::tidy(.x, effects = "fixed", conf.int = TRUE),
@@ -243,7 +239,7 @@ raw_coef_table <- map_dfr(results_ag, ~ broom.mixed::tidy(.x, effects = "fixed",
   filter(term %in% c("year_scaled", "year_scaled:protection_stsunprotected")) %>%
   mutate(
     term = recode(term,
-      "year_scaled"                           = "Protected",
+      "year_scaled" = "Protected",
       "year_scaled:protection_stsunprotected" = "Interaction"
     ),
     across(c(estimate, conf.low, conf.high), ~ round(.x, 4)),
@@ -270,6 +266,7 @@ unprotected_slopes <- map_dfr(names(results_ag), function(sp) {
     mutate(
       species = sp,
       across(c(estimate, conf.low, conf.high), ~ round(.x, 4)),
+      # Redefine significance for interpretability
       significance_Unprotected = case_when(
         p.value < 0.001 ~ "***",
         p.value < 0.01  ~ "**",
@@ -345,15 +342,18 @@ focal_species_coef_table <- raw_coef_table %>%
     style = cell_text(style = "italic"),
     locations = cells_body(columns = species)
   ) %>%
-  tab_source_note("Note: β = log-scale coefficient. Protected and interaction terms from glmmTMB fixed effects. Unprotected trend computed via avg_slopes() accounting for coefficient covariance. Significance: * p<0.05, ** p<0.01, *** p<0.001, ns = not significant.")
+  tab_source_note("Note: β = log-scale coefficient. Significance: * p<0.05, ** p<0.01, *** p<0.001, ns = not significant.")
 
 focal_species_coef_table
 
-#gtsave(focal_species_coef_table, here::here("Outputs", "figures", "focal_species_coef_table.png"), zoom = 3)
+# Save table 
+gtsave(focal_species_coef_table, here::here("Outputs", "figures", "focal_species_coef_table.png"), zoom = 3)
 ```
 
 ### Disaggregated GT summary
-In this section GT summaries were built only for species with significant and stable models. Majority of species had sparse data across different GAP levels. 
+
+In this section GT summaries were built only for species with significant and stable models.
+Majority of species had sparse data across different GAP levels.
 
 ```{r}
 # Species with stable disaggregated models
@@ -394,7 +394,8 @@ disag_coef_table <- map_dfr(stable_disag_species, function(sp) {
 
 n_rows <- nrow(disag_coef_table)
 
-disag_coef_table %>%
+# GT summary
+focal_species_coef_table_disag <- disag_coef_table %>%
   gt() %>%
   tab_header(title = "Focal Species Population Trends by GAP Status") %>%
   tab_spanner(label = "Baseline (GAP 2)",
@@ -448,17 +449,22 @@ disag_coef_table %>%
     style = cell_text(style = "italic"),
     locations = cells_body(columns = species)
   ) %>%
-  tab_source_note("Note: β = log-scale coefficient. Baseline = GAP 2 for all species shown. GAP 4 excluded due to insufficient observations. Unstable estimates not reported. Models fit using glmmTMB with negative binomial family. Significance: * p<0.05, ** p<0.01, *** p<0.001, ns = not significant.")
+  tab_source_note("Note: β = log-scale coefficient. Significance: * p<0.05, ** p<0.01, *** p<0.001, ns = not significant.")
+
+focal_species_coef_table_disag
+
+gtsave(focal_species_coef_table_disag, here::here("Outputs", "figures", "focal_species_coef_table_disag.png"), zoom = 3)
+
 ```
 
-
 ## Visuals
-In this section, predicted population trends were generated using `ggpredict()` from the `ggeffects` package. Predictions reflect model estimates of relative abundance over time for protected and unprotected sites. The unprotected trend is equivalent to the marginal effect's unprotected trend.
-```{r}
+In this section, predicted population trends were generated using `ggpredict()` from the `ggeffects` package.
+Predictions reflect model estimates of relative abundance over time for protected and unprotected sites.
+The unprotected trend is equivalent to the marginal effect's unprotected trend.
 
+```{r}
 font_add_google("Libre Franklin", family = "libre franklin")
 showtext.auto()
-
 
 weme_trends_plt <- ggpredict(results_ag[["Western Meadowlark"]], 
           terms = c("year_scaled [all]", "protection_sts"),
@@ -501,19 +507,16 @@ weme_trends_plt
 
 # Save plot as png 
 showtext_opts(dpi = 300)
-ggsave("weme.png", 
+ggsave(here("Outputs", "figures", "weme.png"), 
        plot = weme_trends_plt, 
        width = 12,
        height = 8,
        dpi = 300)
 
-ggsave(here("temp_viz", "weme_trends.pdf"), weme_trends_plt, 
-       width = 10, height = 6, 
-       device = cairo_pdf)
 ```
 
 ```{r}
-ggpredict(results_ag[["Song Sparrow"]], 
+sosp_trends_plot <- ggpredict(results_ag[["Song Sparrow"]], 
           terms = c("year_scaled [all]", "protection_sts"),
           # Hold variables in model constant 
           condition = c(sample_effort = mean(
@@ -548,10 +551,20 @@ ggpredict(results_ag[["Song Sparrow"]],
         panel.background = element_rect(fill = "#e8eff7"),
         legend.position  = "bottom",
         panel.grid.minor = element_blank())
+
+sosp_trends_plot
+
+# Save plot as png 
+showtext_opts(dpi = 300)
+ggsave(here("Outputs", "figures", "sosp.png"), 
+       plot = sosp_trends_plot, 
+       width = 12,
+       height = 8,
+       dpi = 300)
 ```
 
 ```{r}
-ggpredict(results_ag[["Red-winged Blackbird"]], 
+rwbl_trends_plt <- ggpredict(results_ag[["Red-winged Blackbird"]], 
           terms = c("year_scaled [all]", "protection_sts"),
           # Hold variables in model constant 
           condition = c(sample_effort = mean(
@@ -586,44 +599,15 @@ ggpredict(results_ag[["Red-winged Blackbird"]],
         panel.background = element_rect(fill = "#e8eff7"),
         legend.position  = "bottom",
         panel.grid.minor = element_blank())
-```
 
-```{r}
-ggpredict(results_ag[["Red-breasted Nuthatch"]], 
-          terms = c("year_scaled [all]", "protection_sts"),
-          # Hold variables in model constant 
-          condition = c(sample_effort = mean(
-            focal_species_data$sample_effort[
-              focal_species_data$common_name == "Red-breasted Nuthatch"]))) %>%
-  as.data.frame() %>%
-  mutate(year = x + min(focal_species_data$year_collected)) %>%
-  ggplot(aes(x = year, y = predicted,
-             color = group, fill = group)) +
-  # Add uncertainty bounds
-  geom_ribbon(aes(ymin = conf.low, ymax = conf.high),
-              alpha = 0.12, color = NA) +
-  geom_line(linewidth = 1) +
-  scale_color_manual(values = c("protected"   = "#558731",
-                                 "unprotected" = "#595959"),
-                     labels = c("Protected", "Unprotected")) +
-    scale_fill_manual(values  = c("protected"   = "#558731",
-                                 "unprotected" = "#595959"),
-                    labels  = c("Protected", "Unprotected")) +
-  guides(fill = "none") +
-  labs(x = NULL, 
-       y = "Relative abundance",
-       color = NULL,
-       title = "Red-breasted Nuthatch in Conifer",
-       subtitle = "Protected sites maintain relatively stable populations.") +
-  theme_classic(base_size = 11) +
-  theme(text             = element_text(family = "libre franklin"),
-        plot.title       = element_text(face = "italic", size = 15),
-        plot.subtitle    = element_text(size = 9, color = "gray40"),
-         plot.background = element_rect(fill = "#e8eff7"),
-        legend.background = element_rect(fill = "#e8eff7"),
-        panel.background = element_rect(fill = "#e8eff7"),
-        legend.position  = "bottom",
-        panel.grid.minor = element_blank())
+rwbl_trends_plt
 
+# Save plot as png 
+showtext_opts(dpi = 300)
+ggsave(here("Outputs", "figures", "rwbl.png"), 
+       plot = rwbl_trends_plt, 
+       width = 12,
+       height = 8,
+       dpi = 300)
 ```
 
