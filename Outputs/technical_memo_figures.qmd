@@ -302,11 +302,11 @@ avg_biodiv_protection_plot <- ggplot(
   )
 
 ggsave(
-  filename = here::here("Outputs", "figures", "avg_biodiv_protection_plot.pdf"),
+  filename = here::here("Outputs", "figures", "avg_biodiv_protection_plot.png"),
   plot = avg_biodiv_protection_plot,
   width = 10,
   height = 8,
-  device = cairo_pdf  # better font rendering in PDFs
+  dpi = 150
 )
 ```
 
