@@ -1,15 +1,14 @@
 # Avian GAP Biodiversity Analyses
 
-This repository houses scripts, functions, and outputs from analyses of biodiversity by GAP Status and CAL FIRE habitat type, and of biodiversity trends in focal species across Avian Knowledge Network's sampling window. 
+This repository houses scripts, functions, and outputs from analyses of biodiversity by GAP Status and CAL FIRE habitat type, and of biodiversity trends in focal species across Avian Knowledge Network's sampling window.
 
 ## Structure
 
-```
+```         
 ├── Analysis
 │   ├── focal_species_selection.csv
 │   ├── indicator_analsysis.qmd
 │   └── Models
-│       ├── glmm_tests.qmd
 │       ├── GLMM.qmd
 │       └── population_trends.qmd
 ├── Avian_GAP_Analysis.Rproj
@@ -17,33 +16,25 @@ This repository houses scripts, functions, and outputs from analyses of biodiver
 │   ├── ACAD Regional 2024.06.03.xlsx
 │   ├── area_search.csv
 │   ├── data_processed
-│   ├── ds1327
 │   ├── fveg22_1.gdb
-│   ├── PADUS4_1_State_CA_GDB_KMZ
-│   ├── point_count.csv
-│   ├── secretive_marshbird.csv
-│   └── tl_2025_us_county
+│   ├── PADUS4_1_State_CA_GDB_KMZ 
+│   └── point_count.csv
 ├── Outputs
 │   ├── figures
-│   ├── storymap.qmd
 │   └── technical_memo_figures.qmd
 ├── R
 │   ├── adj_fit_agg.R
 │   ├── adj_fit_disagg.R
 │   ├── autocorrelation_tests.R
-│   ├── data_import.qmd
 │   ├── fit_agg.R
 │   ├── fit_disagg.R
-│   ├── gt_summary.R
 │   ├── partners_in_flight.R
 │   ├── point_blue_theme.R
 │   ├── population_trend.R
 │   ├── rich_gini.R
-│   ├── spatial_join.R
-│   └── testing_species_obs.R
+│   └── spatial_join.R
 └── README.md
 ```
-
 
 ### Analysis
 
@@ -55,29 +46,28 @@ Contains final figures resulting from analysis including tables from GLMM output
 
 ### R
 
-Stores the functions used to complete analyses. 
+Stores the functions used to complete analyses.
 
-**spatial_join.R**: Runs spatial join on avian data with USGS GAP status classifications and CALFIRE habitat type layers using transformed coordinates, producing a unified dataframe linking species observations to protection status and habitat type across California. Due to the initial granularity of the raster (30x30 meter cells) we aggregated the raster by a factor of 20. 
+**spatial_join.R**: Runs spatial join on avian data with USGS GAP status classifications and CALFIRE habitat type layers using transformed coordinates, producing a unified dataframe linking species observations to protection status and habitat type across California. Due to the initial granularity of the raster (30x30 meter cells) we aggregated the raster by a factor of 20.
 
-**rich_gini**: Calculates rich-gini alpha biodiversity for each GAPxhabitat area in California's perimeter, resulting in a column added to the spatially joined dataframe. 
+**rich_gini**: Calculates rich-gini alpha biodiversity for each GAPxhabitat area in California's perimeter, resulting in a column added to the spatially joined dataframe.
 
-## Workflow 
+## Workflow
 
--  Start by downloading the data
+-   Start by downloading the data
 
-| Data Source | Type | Link |
-|-------------|------|------|
-| USGS GAP Project | Protected areas polygons (GAP status) | [USGS GAP](https://www.usgs.gov/programs/gap-analysis-project) |
-| CAL FIRE Vegetation by Wildlife Habitat Relationships 2022 | California vegetation habitat raster | [FVEG22](https://www.fire.ca.gov/what-we-do/fire-resource-assessment-program/gis-mapping-and-data-analytics ) |
-| Avian Knowledge Network | Bird observation survey data (point count & area search) | [AKN](https://avianknowledge.net) |
+| Data Source | Type | Link | What to Download |
+|------------------|------------------|------------------|------------------|
+| USGS GAP Project | Protected areas polygons (GAP status) | [USGS GAP](https://www.sciencebase.gov/catalog/item/6759abcfd34edfeb8710a004) | `PADUS4_1_State_CA_GDB_KMZ` |
+| CAL FIRE Vegetation by Wildlife Habitat Relationships 2022 | California vegetation habitat raster | [FVEG22](https://www.fire.ca.gov/what-we-do/fire-resource-assessment-program/gis-mapping-and-data-analytics) | `Vegetation by Wildlife Habitat Relationships 2022` |
+| Avian Knowledge Network | Bird observation survey data (point count & area search) | [AKN](https://avianknowledge.net) | `point count` and `area search` |
+| Partners in flight | Avian species of interest | [PIF](https://pif.birdconservancy.org/avian-conservation-assessment-database-scores/)| `ACAD Regional your.date.xlsx |
+-   Next run `R/spatial_join.R `
 
--  Next run spatial_join.R
+-   Next run `Analysis/indicator_analysis.qmd`
 
--  Next run indicator_analysis.qmd
+-   Next run `Analysis/Models/population_trends.qmd`
 
--  Next run population_trends.qmd
+-   Next run `Analysis/Models/GLMM.qmd`
 
--  Next run glmm_tests.qmd
-
--  For figures you may run technical_memo_figures.qmd
-  
+-   For figures you may run technical_memo_figures.qmd

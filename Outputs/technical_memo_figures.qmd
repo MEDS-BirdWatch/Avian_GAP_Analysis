@@ -19,9 +19,14 @@ library(patchwork)
 library(showtext)
 library(kableExtra)
 
+birds_joined <- st_read_parquet(here('data', 'data_processed', 
+                                     'birds_joined.parquet'))
 
-birds_joined <- st_read_parquet(here('data', 'data_processed', 'birds_joined.parquet'))
+habitat_poly <- st_read_parquet(here('data','data_processed', 
+                                     'habitat_polygon.parquet'))
 
+gap_clean <- st_read_parquet(here('data','data_processed', 
+                                  'gap_polygon.parquet'))
 source(here("R", "point_blue_theme.R"))
 source(here("R", "rich_gini.R"))
 showtext_auto(enable = TRUE)
@@ -152,6 +157,7 @@ counties <- tigris::counties() %>%
   select(namelsad, area) %>% 
   st_transform(crs(birds_joined))
 
+
 total_observations <- birds_joined %>% 
   select(observation_count) 
   
@@ -169,6 +175,34 @@ county_obs <- total_observations %>%
   ) %>%
   arrange(desc(density))
 
+
+point_area_county <- st_join(counties, point_area_obs) %>% 
+  st_drop_geometry() %>% 
+  group_by(namelsad) %>% 
+  summarize(total_observations = sum(observation_count))
+
+
+point_area_county$total_observations[is.na(point_area_county$total_observations)] <-  0
+
+county_obs <- left_join(counties, point_area_county,
+                        by = 'namelsad')
+
+county_obs <- county_obs %>% 
+  group_by(namelsad) %>% 
+  summarize(density = total_observations/area,
+            total_obs = total_observations)
+
+bluegreen <- colorRampPalette(colors = c('#4595D1', '#73B843'), bias = .5, space = 'Lab')
+
+county_obs_plot <- ggplot(county_obs)+
+  geom_sf(aes(fill = density))+
+  scale_fill_gradientn(colors = bluegreen(100))+
+  theme_void()+
+  theme(legend.position = 'none')
+
+ggsave(here('Outputs', 'figures', 'county_obs_plot.png'), county_obs_plot, scale = 1, width = 10, height = 10)
+
+
 county_obs %>%
   rename(
     "County Name" = namelsad,
@@ -180,6 +214,7 @@ county_obs %>%
   kable() %>%
   kable_styling(bootstrap_options = c("striped", "hover")) %>%
   row_spec(0, background = point_blue)
+
 ```
 
 ## County observation map
@@ -221,6 +256,151 @@ sts_biodiv <- birds_joined %>%
   summarize(avg_biod = mean(rich_gini / sample_effort, na.rm = TRUE), .groups = "drop")
 
 ```
+
+<<<<<<< HEAD
+## Habitat Complexity
+
+```{r}
+habitats <- tm_shape(habitat_poly) +
+  tm_polygons(fill = 'LIFEFORM',
+              fill.scale = tm_scale(
+                values = c('#B5727A',
+                           '#FF72DE',
+                           '#74B162',
+                           '#A98858',
+                           '#FEDD63',
+                           '#F7A54B',
+                           '#595959',
+                           '#8EBEE2')),
+                lty = 'blank',
+              fill.legend = tm_legend_hide())+
+  tm_layout(bg = FALSE, frame = FALSE,
+            outer.margins = 0)
+
+tmap_save(habitats, here('Outputs', 'figures', 'habitats.png'), 
+          bg = "transparent")
+```
+
+I want a plot of all the 47 habitat types
+
+```{r}
+habitats_full <- rast(here('data','fveg22_1.gdb'))
+
+
+habitats_whrall <- tm_shape(habitats_full)+
+  tm_raster(legend.show = FALSE)+
+  tm_layout(bg = FALSE, frame = FALSE,
+            outer.margins = 0)
+
+tmap_save(habitats_whrall, here('Outputs', 'figures', 'habitats_whrall.png'), 
+          bg = "transparent")
+```
+
+
+## Gap Plots
+
+```{r}
+california_shape <- tigris::states() %>% 
+  filter(STUSPS == "CA")
+
+bbox <- st_as_sfc(st_bbox(c(xmin = -128, xmax = -111, ymin = 29, ymax = 45), 
+                          crs = st_crs(california_shape)))
+mask <- st_difference(bbox, st_union(california_shape))
+```
+
+```{r}
+gap1_2 <- tm_shape(mask, bbox = st_bbox(gap_clean)) +
+  tm_polygons(fill = NA, col = NA) +
+tm_basemap("Esri.WorldTopoMap")+
+tm_shape(gap_clean %>% 
+             filter(gap_sts %in% c(1,2)))+
+  tm_polygons(fill = '#73B843',
+              lty = 'blank',
+              col = NA) +
+  tm_layout(bg = FALSE, frame = FALSE,
+            outer.margins = 0)
+
+tmap_save(gap1_2, here('Outputs', 'figures', 'gap1_2.png'), 
+          bg = "transparent")
+```
+
+```{r}
+gap3_4 <- tm_shape(mask, bbox = st_bbox(gap_clean)) +
+  tm_polygons(fill = NA, col = NA) +
+tm_basemap("Esri.WorldTopoMap")+
+tm_shape(gap_clean %>% 
+             filter(gap_sts %in% c(3,4)))+
+  tm_polygons(fill = '#F7A54B',
+              lty = 'blank',
+              col = NA) + 
+  tm_layout(bg = FALSE, frame = FALSE)
+
+tmap_save(gap3_4,here('Outputs', 'figures', 'gap3_4.png'),
+          bg = "transparent")
+```
+
+
+```{r}
+gap5 <- tm_shape(mask, bbox = st_bbox(gap_clean)) +
+  tm_polygons(fill = NA, col = NA) +
+tm_basemap("Esri.WorldTopoMap")+
+tm_shape(gap_clean %>% 
+             filter(gap_sts == 5))+
+  tm_polygons(fill = charcoal,
+              lty = 'blank',
+              col = NA) + 
+  tm_layout(bg = FALSE, frame = FALSE)
+
+tmap_save(gap5, here('Outputs', 'figures', 'gap5.png'),
+          bg = "transparent")
+```
+
+```{r}
+basemap <- tm_shape(mask, bbox = st_bbox(gap_clean)) +
+  tm_polygons(fill = NA, col = NA) +
+  tm_basemap("Esri.WorldTopoMap")+
+   tm_layout(bg = FALSE, frame = FALSE)
+
+tmap_save(basemap,  here('Outputs', 'figures', 'basemap.png'),
+          bg = "transparent")
+```
+
+
+## Table of cats
+
+```{r}
+# Source geodatabase from CAL FIRE
+gdb_path <- here::here('data', 'ds1327', 'tiff', 'ds1327.tif')
+
+# Create raster object for habitat type layer
+habitat_type <- rast(gdb_path)
+
+# Grab categories
+cats <- cats(habitat_type)[[1]]
+
+# Collapse to just names and lifeform
+lookup_habitat <- cats %>% 
+  group_by(LIFEFORM) %>% 
+  summarize(whr = paste(unique(WHRNAME), collapse = ', '))
+```
+
+Make into Kable 
+```{r}
+lookup_habitat %>% 
+  mutate(LIFEFORM = str_to_title(LIFEFORM)) %>% 
+  rename('Habitat Type' = LIFEFORM, 'Subtypes' = whr) %>% 
+  kable() %>%
+  column_spec(1, width = "3cm") %>% 
+  kable_styling(bootstrap_options = c("hover"), full_width = F) %>%
+  row_spec(0, background = "#4A90C4", color = "white", bold = TRUE) %>%
+  row_spec(seq(1, 7, 2), background = "#8EBEE2") %>%
+  row_spec(seq(2, 8, 2), background = "#D6E8F5") %>%
+  footnote(general = "Barren Habitat dropped due to lack of data") %>% 
+  save_kable(here('Outputs', 'figures',"Habitat_Types_table.png"), zoom = 3)
+```
+
+
+
 
 
 # Annual biodiversity averages model (simplified overview of protection effect and trends)
@@ -308,6 +488,86 @@ ggsave(
   height = 8,
   dpi = 150
 )
+```
+## Focal species observations
+```{r}
+# Load in focal species data
+focal_species_data <- readRDS(here("data", "data_processed", "focal_species.rds"))
+
+# Create observation table 
+obs_table <- focal_species_data %>%
+  st_drop_geometry() %>%
+  group_by(common_name) %>%
+  # Count number of rows/obs per species 
+  summarise(
+    n_protected   = sum(protection_sts == "protected"),
+    n_unprotected = sum(protection_sts == "unprotected"),
+    n_gap1 = sum(gap_sts == 1, na.rm = TRUE),
+    n_gap2 = sum(gap_sts == 2, na.rm = TRUE),
+    n_gap3 = sum(gap_sts == 3, na.rm = TRUE),
+    n_gap4 = sum(gap_sts == 4, na.rm = TRUE),
+    n_gap5 = sum(gap_sts == 5, na.rm = TRUE),
+    total  = n(),
+    .groups = "drop"
+  )
+# Gt summary formatting 
+n_rows <- nrow(obs_table)
+
+obs_gt_tbl <- obs_table %>%
+  gt() %>%
+  tab_spanner(label = "Aggregated",
+              columns = c(n_protected, n_unprotected)) %>%
+  tab_spanner(label = "Disaggregated (GAP Status)",
+              columns = c(n_gap1, n_gap2, n_gap3, n_gap4, n_gap5)) %>%
+  cols_label(
+    common_name   = "Species",
+    n_protected   = "Protected",
+    n_unprotected = "Unprotected",
+    n_gap1        = "GAP 1",
+    n_gap2        = "GAP 2",
+    n_gap3        = "GAP 3",
+    n_gap4        = "GAP 4",
+    n_gap5        = "GAP 5",
+    total         = "Total"
+  ) %>%
+  tab_style(
+    style = list(cell_fill(color = point_blue),
+                 cell_text(color = point_light_blue2, weight = "bold")),
+    locations = cells_column_labels(everything())
+  ) %>%
+  tab_style(
+    style = list(cell_fill(color = point_blue),
+                 cell_text(color = point_light_blue2, weight = "bold")),
+    locations = cells_column_spanners(everything())
+  ) %>%
+  tab_style(
+    style = cell_fill(color = point_light_blue1),
+    locations = cells_body(rows = seq(1, n_rows, 2))
+  ) %>%
+  tab_style(
+    style = cell_fill(color = point_light_blue2),
+    locations = cells_body(rows = seq(2, n_rows, 2))
+  ) %>%
+  tab_style(
+    style = cell_text(style = "italic"),
+    locations = cells_body(columns = common_name)
+  ) %>%
+  tab_options(
+    table.border.top.style    = "hidden",
+    table.border.bottom.style = "solid",
+    column_labels.border.bottom.style = "solid",
+    table_body.hlines.style   = "none"
+  ) %>%
+  tab_source_note("Note: n = number of survey records. Values of 0 indicate no observations for that GAP level.")
+
+# View gt table of observations
+obs_gt_tbl
+
+# Save gt table
+gtsave(obs_gt_tbl, 
+       here::here("Outputs", "figures", "obs_summary_table.png"), 
+       zoom = 3)
+
 ```
 
 

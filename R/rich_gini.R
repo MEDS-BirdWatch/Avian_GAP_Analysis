@@ -1,3 +1,11 @@
+#' gini_simpson
+#'
+#' @param data your filtered AKN data
+#'
+#' @returns the same data frame left joined with richness, gini index, and rich-gini index
+#' @export
+#'
+#' @examples
 gini_simpson <- function(data) {
   species_props <- data %>%
     st_drop_geometry() %>%
