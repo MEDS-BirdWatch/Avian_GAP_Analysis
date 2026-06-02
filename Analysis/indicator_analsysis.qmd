@@ -120,9 +120,7 @@ focal_species <- focal_species %>%
   rename(habitat_type = group)
 
 # Write csv 
-#focal_species <- write_csv(focal_species, "focal_species_selection.csv")
-
-test <- read_csv(here("Analysis", "focal_species_selection.csv"))
+focal_species <- write_csv(focal_species, here("data", "data_processed", "focal_species_selection.csv"))
 
 ```
 
