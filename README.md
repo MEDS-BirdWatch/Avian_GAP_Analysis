@@ -1,6 +1,12 @@
 # Avian GAP Biodiversity Analyses
 
+![](Outputs/figures/presentation_gridcell.png)
+
+------------------------------------------------------------------------
+
 This repository houses scripts, functions, and outputs from analyses of biodiversity by GAP Status and CAL FIRE habitat type, and of biodiversity trends in focal species across Avian Knowledge Network's sampling window (1990-2025).
+
+------------------------------------------------------------------------
 
 ## Structure
 
@@ -36,17 +42,23 @@ This repository houses scripts, functions, and outputs from analyses of biodiver
 └── README.md
 ```
 
-### Analysis
+------------------------------------------------------------------------
 
-Contains quarto document **indicator_analysis** to run an indicator analysis using the {indicspecies} R package to obtain a list of possible focal species for each habitat type with a data-driven approach. The output is csv **focal_species_selection.csv** containing the final indicator species list for GAP and habitat type. 
+### Analysis/
+
+Contains quarto document **indicator_analysis** to run an indicator analysis using the {indicspecies} R package to obtain a list of possible focal species for each habitat type with a data-driven approach. The output is csv **focal_species_selection.csv** containing the final indicator species list for GAP and habitat type.
 
 The **models** subfolder contains all the quarto documents used to assess biodviersity with general linear mixed effect models.
 
-### Outputs
+------------------------------------------------------------------------
+
+### Outputs/
 
 Contains quarto document **technical_memo_figures.qmd** used to create all final figures generated in R to reflect patterns and trends in the data. **figures** subfolder contains all figures from technical memorandum quarto and those resulting from analysis including tables from GLMM outputs.
 
-### R
+------------------------------------------------------------------------
+
+### R/
 
 Stores the functions used to complete analyses, including sourcing script and rich-gini-simpson function critical to running all analyses.
 
@@ -54,7 +66,11 @@ Stores the functions used to complete analyses, including sourcing script and ri
 
 **rich_gini**: Calculates rich-gini alpha biodiversity for each GAPxhabitat area in California's perimeter, resulting in a column added to the spatially joined dataframe.
 
+------------------------------------------------------------------------
+
 ## Workflow
+
+-   Use `environment.R` to install and load all prerequisites
 
 -   Download data from given sources
 
@@ -62,9 +78,17 @@ Stores the functions used to complete analyses, including sourcing script and ri
 |------------------|------------------|------------------|------------------|
 | USGS GAP Project | Protected areas polygons (GAP status) | [USGS GAP](https://www.sciencebase.gov/catalog/item/6759abcfd34edfeb8710a004) | `PADUS4_1_State_CA_GDB_KMZ` |
 | CAL FIRE Vegetation by Wildlife Habitat Relationships 2022 | California vegetation habitat raster | [FVEG22](https://www.fire.ca.gov/what-we-do/fire-resource-assessment-program/gis-mapping-and-data-analytics) | `Vegetation by Wildlife Habitat Relationships 2022` |
-| Avian Knowledge Network | Bird observation survey data (point count & area search) | [AKN](https://avianknowledge.net) | `point count` and `area search` |
-| Partners in flight | Avian species of interest | [PIF](https://pif.birdconservancy.org/avian-conservation-assessment-database-scores/)| `ACAD Regional your.date.xlsx |
--   Next run `R/spatial_join.R `
+| Avian Knowledge Network | Bird observation survey data (point count & area search) | [AKN](https://avianknowledge.net) | `area search` |
+| Avian Knowledge Network | Bird observation survey data (point count & area search) | [AKN](https://avianknowledge.net) | `point count` |
+| Partners in flight | Avian species of interest | [PIF](https://pif.birdconservancy.org/avian-conservation-assessment-database-scores/) | \`ACAD Regional your.date.xlsx (This is a gatcha as the date updates) |
+
+These data should be placed in a folder at the root labeled `data`
+
+-   Next run `R/spatial_join.R`
+
+    -   Make sure to update the names of the files in the imports
+
+    -   All data frames will output to `data/data_processed`
 
 -   Next run `Analysis/indicator_analysis.qmd`
 
@@ -72,4 +96,4 @@ Stores the functions used to complete analyses, including sourcing script and ri
 
 -   Next run `Analysis/Models/GLMM.qmd`
 
--   For figures you may run technical_memo_figures.qmd
+-   For figures you may run `Outputs/technical_memo_figures.qmd`
