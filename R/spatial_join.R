@@ -1,18 +1,5 @@
 # Script for initial data import, cleaning, and joining
 # Start all analysis here
-
-
-#----------------------------- Load libraries ----------------------------------
-library(tidyverse) # version 2.0.0
-library(sf) #1.0-21
-library(here) #1.0.1
-library(janitor) #2.2.1
-library(stars) #0.6-8
-library(terra) #1.8-42
-library(arcgislayers)
-library(tigris) #2.2.1
-library(arrow) #23.0.1.2
-library(sfarrow) #0.4.1
 #-------------------------------------------------------------------------------
 
 #--------------------------Source Rich Gini-------------------------------------
