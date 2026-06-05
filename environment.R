@@ -1,8 +1,11 @@
 # ============================================================
 # Reproducible package environment — BirdWatch Avian GAP Analysis
 # ============================================================
+
+# === Install pacman ===
 install.packages("pacman")
 
+# === Load packages ===
 pacman::p_load(
   sf,              # 1.0-24
   stars,           # 0.6-8

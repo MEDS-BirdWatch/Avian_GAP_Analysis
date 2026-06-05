@@ -16,23 +16,6 @@ This analysis includes frameworks for analysis and testing on:
 
 Load Packages, functions, and data
 ```{r}
-library(tidyverse) #2.0.0
-library(sf) #1.0-21
-library(here) #1.0.1
-library(janitor) #2.2.1
-library(stars) #0.6-8
-library(terra) #1.8-42
-library(glmmTMB) #1.1.14
-library(broom.mixed) #0.2.9.6
-library(gtsummary) #2.5.0
-library(gtExtras) #0.6.2
-library(lmtest) #0.9-40
-library(spdep) #1.4-2
-library(kableExtra) #1.4.0
-library(sfarrow) #0.4.1
-library(tigris) #2.2.1
-library(webshot2) #0.1.2
-
 
 source(here('R','fit_agg.R'))
 source(here('R','fit_disagg.R'))
