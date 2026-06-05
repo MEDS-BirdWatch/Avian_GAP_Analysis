@@ -29,10 +29,7 @@ ifelse(dir.exists(here("data", "data_processed")),
 
 #----------------------------------CAL FIRE-------------------------------------
 # Source geodatabase from CAL FIRE
-gdb_path <- here::here('data', 'ds1327', 'tiff', 'ds1327.tif')
-
-# habitat_type <- arc_open("58f81510e4c14b1da3c64823302f5101")
-# habitat_type<-  arc_raster(habitat_type)
+gdb_path <- here::here('data', 'fveg22_1.gdb')
 
 # Create raster object for habitat type layer
 habitat_type <- rast(gdb_path)
@@ -98,7 +95,6 @@ ca <- states(cb = TRUE) %>%
 # Read in GAP data as a vector 
 
 gap <- st_read(here::here('data',
-                          'PADUS4_1_State_CA_GDB_KMZ', 
                           'PADUS4_1_StateCA.gdb'),
                layer = "PADUS4_1Fee_State_CA",
                quiet = TRUE) %>% 
@@ -129,6 +125,7 @@ st_write_parquet(gap_clean, here('data', 'data_processed','gap_polygon.parquet')
 #-------------------------------------------------------------------------------
 
 #------------------------------AKN data-----------------------------------------
+# Update point count name as neccessary
 point_count <- read_csv(here::here('data', 'point_count.csv')) %>% 
   clean_names() %>% 
   mutate(survey_type = 'Point Count') %>% 
@@ -157,8 +154,10 @@ point_area_geo <- bind_rows(area_search, point_count) %>%
 
 #---------------------------Area Calculations-----------------------------------
 
+# Find the intersection of the gap status x habitat_type 
 area_intersection <- st_intersection(gap_clean, habitat_poly)
 
+# calculate area of each intersection
 area_intersection <- area_intersection %>% 
   mutate(area = st_area(geometry)) %>% 
   st_drop_geometry() %>% 
@@ -172,6 +171,7 @@ birds_joined <- st_join(point_area_geo, gap_clean["gap_sts"])
 # Match vector 
 habitat_id <- terra::extract(habitat_type, vect(birds_joined), ID = FALSE)[,1]
 
+# Add habitat types
 birds_joined$habitat_type <- habitat_id
 
 birds_joined <- left_join(birds_joined, area_intersection) %>% 
@@ -193,22 +193,6 @@ birds_joined <- birds_joined %>%
   )) %>% 
   gini_simpson()
   
-  # Sample Effort ----
-# geom <- st_geometry(birds_joined)
-# 
-# birds_joined <- birds_joined %>%
-#   st_drop_geometry() %>%
-#   group_by(year_collected, study_area) %>%
-#   mutate(sample_effort = case_when(
-#     survey_type == "Area Search" ~ 1,
-#     TRUE ~ sum(abs(survey_duration[!duplicated(sampling_unit_id)]))
-#   )) %>%
-#   ungroup()
-# 
-# birds_joined$geometry <- geom
-# birds_joined <- st_as_sf(birds_joined)
-
-
 
 # Write st data to parquet
 st_write_parquet(birds_joined, here('data', 'data_processed','birds_joined.parquet'))

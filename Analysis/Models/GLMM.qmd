@@ -4,33 +4,43 @@ format: html
 cache: TRUE
 warning: FALSE
 ---
+## Overview
+In this analysis we will be running gamma regressions on our avian data.
+This analysis includes frameworks for analysis and testing on:
+
+-  Base model with our data
+
+-  Sample method with our data
+
+-  Adjusted model with our data
+
 Load Packages, functions, and data
 ```{r}
-library(tidyverse)
+library(tidyverse) #2.0.0
 library(sf) #1.0-21
 library(here) #1.0.1
 library(janitor) #2.2.1
 library(stars) #0.6-8
 library(terra) #1.8-42
 library(glmmTMB) #1.1.14
-library(broom.mixed)
-library(gtsummary)
-library(gtExtras)
-library(lmtest)
-library(spdep)
-library(kableExtra)
-library(sfarrow)
-library(kableExtra)
-library(webshot2)
+library(broom.mixed) #0.2.9.6
+library(gtsummary) #2.5.0
+library(gtExtras) #0.6.2
+library(lmtest) #0.9-40
+library(spdep) #1.4-2
+library(kableExtra) #1.4.0
+library(sfarrow) #0.4.1
+library(tigris) #2.2.1
+library(webshot2) #0.1.2
 
-source(here('R', 'autocorrelation_tests.R'))
+
 source(here('R','fit_agg.R'))
 source(here('R','fit_disagg.R'))
 source(here('R','adj_fit_agg.R'))
 source(here('R', 'adj_fit_disagg.R'))
-source(here('R','point_blue_theme.R'))
+source(here('R', 'autocorrelation_tests.R'))
 
-source(here('R', 'rich_gini.R'))
+source(here('R','point_blue_theme.R'))
 
 set.seed(76)
 
@@ -39,7 +49,6 @@ birds_joined <- st_read_parquet(here('data', 'data_processed', 'birds_joined.par
 
 habitats <- unique(birds_joined$habitat_type)
 
-birds_joined <- st_read_parquet()
 ```
 
 
@@ -302,7 +311,8 @@ When you examine this, it does not really improve spatial or temporal autocorrel
 
 ## Adjust models
 
-Next, we adjusted the models. This ended up improving the autocorrelation. 
+Next, we adjusted the models. This ended up improving the autocorrelation.
+
 ```{r}
 #| warning: FALSE
 # Here we do not need to update the data
@@ -342,6 +352,7 @@ adj_spatial_temporal_tests <- run_spatial_temporal_tests(
 
 print(adj_spatial_temporal_tests, n=38)
 ```
+
 # Create model summary of aggregated biodiversity across point and area search
 
 ```{r}
@@ -362,7 +373,7 @@ for (i in habitats){
     filter(habitat_type == i)
   
   
-  bird_summary[[i]] <- glmmTMB(rich_gini ~ protection, family = beta_family(), data = tmp[[i]])
+  bird_summary[[i]] <- glmmTMB(rich_gini ~ protection_sts, family = beta_family(), data = tmp[[i]])
 }
 ```
 
@@ -413,5 +424,7 @@ adj_spatial_temporal_tests %>%
   row_spec(seq(2, 6, 2), background = "#D6E8F5") %>%
   footnote(general = "Moran's Index values near 0 indicate no spatial autocorrelation.") %>% 
   save_kable(here('Outputs', 'figures',"adj_disag_moran.png"), zoom = 3)
+
+
 ```
 
