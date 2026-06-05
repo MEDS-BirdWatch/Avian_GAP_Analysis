@@ -3,15 +3,17 @@
 # ============================================================
 
 # === Install pacman ===
-install.packages("pacman")
+# install.packages("pacman")
 
 # === Load packages ===
 pacman::p_load(
   sf,              # 1.0-24
   stars,           # 0.6-8
   terra,           # 1.8-60
+  tigris,          # 2.2.1
   tidyterra,       # 0.7.2
   sfarrow,         # 0.4.1
+  arrow,           # 23.0.1.2
   tidyverse,       # 2.0.0
   here,            # 1.0.2
   janitor,         # 2.2.1
@@ -33,3 +35,4 @@ pacman::p_load(
   marginaleffects, # 0.32.0
   ggeffects        # 2.3.2
 )
+
