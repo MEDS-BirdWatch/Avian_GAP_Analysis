@@ -20,7 +20,6 @@ library(tidyverse) #2.0.0
 library(sf) #1.0-21
 library(here) #1.0.1
 library(janitor) #2.2.1
-library(stars) #0.6-8
 library(terra) #1.8-42
 library(glmmTMB) #1.1.14
 library(broom.mixed) #0.2.9.6
@@ -424,7 +423,198 @@ adj_spatial_temporal_tests %>%
   row_spec(seq(2, 6, 2), background = "#D6E8F5") %>%
   footnote(general = "Moran's Index values near 0 indicate no spatial autocorrelation.") %>% 
   save_kable(here('Outputs', 'figures',"adj_disag_moran.png"), zoom = 3)
+```
 
 
+## Put together results df
+
+```{r}
+adj_agg_df <- map_dfr(habitats, ~{
+  m <- adj_area_agg[[.x]]
+  if (is.null(m)) return(NULL)
+  tidy(m) %>% mutate(habitat = .x, model = 'Area Search')
+}) %>%
+bind_rows(
+  map_dfr(habitats, ~{
+    m <- adj_point_agg[[.x]]
+    if (is.null(m)) return(NULL)
+    tidy(m) %>% mutate(habitat = .x, model = 'Point Count')
+  })
+) %>% 
+  clean_names() %>% 
+  filter(! grepl('sd_', term)) %>% 
+  select(term, beta = estimate , se = std_error, habitat, model, p_value)
+
+adj_disag_df <- map_dfr(habitats, ~{
+  m <- adj_area_disag[[.x]]
+  if (is.null(m)) return(NULL)
+  tidy(m) %>% mutate(habitat = .x, model = 'Area Search')
+}) %>%
+  bind_rows(
+    map_dfr(habitats, ~{
+      m <- adj_point_disag[[.x]]
+      if (is.null(m)) return(NULL)
+      tidy(m) %>% mutate(habitat = .x, model = 'Point Count')
+    })
+  ) %>%
+  clean_names() %>%
+  filter(! grepl('sd_', term)) %>% 
+  select(term, beta = estimate, se = std_error, habitat, model, p_value) 
+```
+
+
+## Create kable table of adj results
+
+### Aggregated df
+```{r}
+table_data <- adj_agg_df %>%
+  filter(!grepl('sd_(Intercept)|sigma', term)) %>%
+  mutate(
+    habitat = str_to_title(habitat),
+    term = case_when(
+      term == "(Intercept)" ~ "Intercept",
+      term == "protectionProtected" ~ "Protected",
+      TRUE ~ term
+    ),
+    beta = round(beta, 3),
+    se = round(se, 3),
+    p_value = case_when(
+      p_value < 0.001 ~ "< 0.001",
+      p_value < 0.01  ~ "< 0.01",
+      p_value < 0.05  ~ "< 0.05",
+      TRUE ~ as.character(round(p_value, 3))
+    )
+  ) %>%
+  arrange(habitat, term) %>%
+  pivot_wider(
+    names_from = model,
+    values_from = c(beta, se, p_value),
+    names_glue = "{model}_{.value}"
+  ) %>%
+  select(habitat, term, 
+         `Area Search_beta`, `Area Search_se`, `Area Search_p_value`,
+         `Point Count_beta`, `Point Count_se`, `Point Count_p_value`)
+
+# Auto generate habitat group indices
+habitat_groups <- table_data %>%
+  mutate(row = row_number()) %>%
+  group_by(habitat) %>%
+  summarise(start = min(row), end = max(row))
+
+# Build kable
+k <- table_data %>%
+  select(-habitat) %>%
+  rename(
+    'Term' = term,
+    'β' = `Area Search_beta`, 'SE' = `Area Search_se`, 'p-value' = `Area Search_p_value`,
+    'β ' = `Point Count_beta`, 'SE ' = `Point Count_se`, 'p-value ' = `Point Count_p_value`
+  ) %>%
+  kable(align = c('l', 'r', 'r', 'r', 'r', 'r', 'r')) %>%
+  kable_styling(bootstrap_options = c("hover"), full_width = F) %>%
+  # Model headers
+  add_header_above(
+    c("Model " = 1, "Area Search" = 3, "Point Count" = 3),
+    background = "#4A90C4", color = "white", bold = TRUE
+  ) %>%
+  # Title
+  add_header_above(
+    c("Protection Effects on Bird Counts by Habitat and Survey Method" = 7),
+    background = "#4A90C4", color = "white", bold = TRUE
+  ) %>%
+  row_spec(0, background = "#4A90C4", color = "white", bold = TRUE) %>%
+  row_spec(seq(1, nrow(table_data), 2), background = "#8EBEE2") %>%
+  row_spec(seq(2, nrow(table_data), 2), background = "#D6E8F5")
+
+# Add habitat groups
+for (i in 1:nrow(habitat_groups)) {
+  k <- k %>% pack_rows(
+    habitat_groups$habitat[i],
+    habitat_groups$start[i],
+    habitat_groups$end[i],
+    background = "#4A90C4", color = "white", bold = TRUE
+  )
+}
+
+k %>%
+  footnote(general = "β = estimated coefficient; SE = standard error.; Both in Log Space") %>% 
+  save_kable(here('Outputs', 'figures', "protection_effects_table.png"), zoom = 5)
+```
+
+### Disaggregated df
+
+```{r}
+table_data <- adj_disag_df %>%
+  mutate(
+    habitat = str_to_title(habitat),
+    term = case_when(
+      term == "factor(gap_sts)1" ~ "1",
+      term == "factor(gap_sts)2" ~ "2",
+      term == "factor(gap_sts)3" ~ "3",
+      term == "factor(gap_sts)4" ~ "4",
+      term == "factor(gap_sts)5" ~ "5",
+      TRUE ~ term
+    ),
+    beta = round(beta, 3),
+    se = round(se, 3),
+    p_value = case_when(
+      p_value < 0.001 ~ "< 0.001",
+      p_value < 0.01  ~ "< 0.01",
+      p_value < 0.05  ~ "< 0.05",
+      TRUE ~ as.character(round(p_value, 3))
+    )
+  ) %>%
+  arrange(habitat, term) %>%
+  pivot_wider(
+    names_from = model,
+    values_from = c(beta, se, p_value),
+    names_glue = "{model}_{.value}"
+  ) %>%
+  select(habitat, term, 
+         `Area Search_beta`, `Area Search_se`, `Area Search_p_value`,
+         `Point Count_beta`, `Point Count_se`, `Point Count_p_value`)
+
+# Auto generate habitat group indices
+habitat_groups <- table_data %>%
+  mutate(row = row_number()) %>%
+  group_by(habitat) %>%
+  summarise(start = min(row), end = max(row))
+
+# Build kable
+k <- table_data %>%
+  select(-habitat) %>%
+  rename(
+    'GAP Status'  = term,
+    'β' = `Area Search_beta`, 'SE' = `Area Search_se`, 'p-value' = `Area Search_p_value`,
+    'β ' = `Point Count_beta`, 'SE ' = `Point Count_se`, 'p-value ' = `Point Count_p_value`
+  ) %>%
+  kable(align = c('l', 'r', 'r', 'r', 'r', 'r', 'r')) %>%
+  kable_styling(bootstrap_options = c("hover"), full_width = F) %>%
+  # Model headers
+  add_header_above(
+    c("Model " = 1, "Area Search" = 3, "Point Count" = 3),
+    background = "#4A90C4", color = "white", bold = TRUE
+  ) %>%
+  # Title
+  add_header_above(
+    c("Protection Effects on Bird Counts by Habitat and Survey Method" = 7),
+    background = "#4A90C4", color = "white", bold = TRUE
+  ) %>%
+  row_spec(0, background = "#4A90C4", color = "white", bold = TRUE) %>%
+  row_spec(seq(1, nrow(table_data), 2), background = "#8EBEE2") %>%
+  row_spec(seq(2, nrow(table_data), 2), background = "#D6E8F5")
+
+# Add habitat groups
+for (i in 1:nrow(habitat_groups)) {
+  k <- k %>% pack_rows(
+    habitat_groups$habitat[i],
+    habitat_groups$start[i],
+    habitat_groups$end[i],
+    background = "#4A90C4", color = "white", bold = TRUE
+  )
+}
+
+k %>%
+  footnote(general = "β = estimated coefficient; SE = standard error.; Both in Log Space") %>% 
+  save_kable(here('Outputs', 'figures', "GAP_effects_table.png"), zoom = 5)
 ```
 
