@@ -5,6 +5,7 @@ format: html
 
 ## Load data and packages 
 ```{r}
+# Libraries
 library(sfarrow)
 library(tidyverse)
 library(here)
@@ -19,25 +20,30 @@ library(patchwork)
 library(showtext)
 library(kableExtra)
 
+# Read in bird data 
 birds_joined <- st_read_parquet(here('data', 'data_processed', 
                                      'birds_joined.parquet'))
-
+# Load in habitat dataset
 habitat_poly <- st_read_parquet(here('data','data_processed', 
                                      'habitat_polygon.parquet'))
-
+# Load in GAP data
 gap_clean <- st_read_parquet(here('data','data_processed', 
                                   'gap_polygon.parquet'))
+
+# Source key functions
 source(here("R", "point_blue_theme.R"))
 source(here("R", "rich_gini.R"))
+
+# Turn on style for consistently formatted plots
 showtext_auto(enable = TRUE)
 
 ```
 
-## Observations by year
+# Preliminary result plots- explore data
+## Total observations over time
 
 ```{r}
-# Where the data are, when, habitat and Gap? 
-
+# Create bar plot to show observations over time
 ggplot(birds_joined, aes(x = year_collected, y = sum(observation_count, na.rm = TRUE)))+
   geom_col()+
   theme_linedraw()+
@@ -47,13 +53,16 @@ ggplot(birds_joined, aes(x = year_collected, y = sum(observation_count, na.rm = 
   point_blue_theme()
 ```
 
-Observations by year with density and area search/ point count 
+## Observations by year with density and area search/ point count 
 
 ```{r}
-
-birds_joined %>%
+# Create a plot to display observations over time by survey type
+time_obs_plot <- birds_joined %>%
+  # Group by year and survey method
   group_by(year_collected, survey_type) %>%
+  # Summarize obs by year and survey type
   summarise(observations = sum(observation_count, na.rm = TRUE), .groups = "drop") %>%
+  # Plot 
   ggplot(aes(
     x = year_collected,
     y = observations,
@@ -61,32 +70,49 @@ birds_joined %>%
     fill = survey_type,
     group = survey_type
   )) +
+  # Filled line plot
   geom_line() +
   geom_area(alpha = 0.5, position = "identity") +
+  # Fill colors by survey type
   scale_fill_manual(values = c(point_blue, point_green)) +
+  # Line color associated
   scale_color_manual(values = c(point_blue, point_green)) +
+  # Scale y and x axes without random whitespace
   scale_x_continuous(expand = c(0, 0)) +
   scale_y_continuous(
     expand = c(0, 0),
+    # Label y axis numbers with commas to replace scientific notation
     label = scales::comma,
     limits = c(0, NA)
   ) +
+  # Add labels
   labs(
     title = "Avian Knowledge Network Bird Observations Over Time",
     subtitle = "Point count data is densely clustered 1995-2005",
-    y = "Number of observations",
-    x = NULL
+    y = "Count",
+    x = NULL,
+    fill = "Survey Type"
   ) +
+  # Add point blue theme
   point_blue_theme()
 
+# Save plot to figures folders
+ggsave(
+  filename = here::here("Outputs", "figures", 'time_obs_plot.png'),
+  plot = time_obs_plot,
+  width = 10,
+  height = 8,
+  dpi = 150
+)
 
 ```
 
 
-## Observations by gap status
+## Observations by GAP status
 
 ```{r}
-birds_joined %>% 
+# Create bar plot to display observations by GAP status and survey method
+GAP_bar_plot <- birds_joined %>% 
   group_by(gap_sts, survey_type) %>% 
   summarise(observations = sum(observation_count, na.rm = TRUE), .groups = "drop") %>% 
 ggplot(aes(x = gap_sts, y = observations, color = survey_type,
@@ -97,11 +123,17 @@ ggplot(aes(x = gap_sts, y = observations, color = survey_type,
   scale_color_manual(values = c(point_blue, point_green)) +
   scale_y_continuous(
     expand = c(0, 0),
-    label = scales::comma) +
-  labs(y = 'Observations', 
+    label = scales::comma, 
+    limits = c(0, 1200000)) +
+  labs(y = 'Count', 
        x = 'GAP Status', 
-       title = 'Observations by GAP Status') +
+       title = 'Avian Observations by GAP Status', 
+       subtitle = "Most observations were within GAP status 2 & 3 areas", 
+         fill = "Survey Type",
+  color = "Survey Type",) +
   point_blue_theme() +
+  theme(axis.title.x = element_text(size = 17))+
+  # Add annotation to explain NA obs
   annotate("segment", x = 6, xend = 6, y = 20000, yend = 170000) +
   annotate(geom = "text",
           x = 6, 
@@ -111,11 +143,19 @@ ggplot(aes(x = gap_sts, y = observations, color = survey_type,
           size = 5
           )
 
+ggsave(
+  filename = here::here("Outputs", "figures", 'GAP_bar_plot.png'),
+  plot = GAP_bar_plot,
+  width = 10,
+  height = 8,
+  dpi = 150
+)
 ```
 
 ## Observations by habitat type
 
 ```{r}
+# Find and plot observations by habitat type and survey = Area Search
 habitat_obs_area <- birds_joined %>% 
   filter(survey_type == "Area Search") %>% 
   group_by(habitat_type, survey_type) %>% 
@@ -125,12 +165,13 @@ habitat_obs_area <- birds_joined %>%
   geom_col(fill = point_blue) +
   scale_x_continuous(label = scales::comma, expand = c(0, 0), limits = c(0, 800000)) +
   point_blue_theme() +
-  theme(legend.position = "none") +
-  labs(y = 'Observations', 
-       x = 'Habitat Type', 
+  theme(legend.position = "none",
+        axis.title.x = element_text(size = 17)) +
+  labs(x = 'Count', 
+       y = 'Habitat Type', 
        title = 'Observations by Habitat in Area Searches')
 
-
+# Find and plot observations by habitat type and survey = Point Count
 habitat_obs_point <- birds_joined %>% 
   filter(survey_type == "Point Count") %>% 
   group_by(habitat_type, survey_type) %>% 
@@ -140,127 +181,134 @@ habitat_obs_point <- birds_joined %>%
   geom_col(fill = point_blue) +
   scale_x_continuous(label = scales::comma, expand = c(0, 0), limits = c(0, 800000)) +
   point_blue_theme() +
-  theme(legend.position = "none") +
-  labs(y = 'Observations', 
-       x = 'Habitat Type', 
+  theme(legend.position = "none",
+        axis.title.x = element_text(size = 17)) +
+  labs(x = 'Count', 
+       y = 'Habitat Type', 
        title = 'Observations by Habitat in Point Count')
 
-habitat_obs_area / habitat_obs_point
-```
+# Combine plots using patchwork library
+habitat_plot <- habitat_obs_area / habitat_obs_point
 
-## Observations by county 
-```{r}
-counties <- tigris::counties() %>% 
-  clean_names() %>% 
-  filter(statefp == '06') %>% 
-  mutate(area = (aland+awater)* 1e-6) %>% 
-  select(namelsad, area) %>% 
-  st_transform(crs(birds_joined))
-
-
-total_observations <- birds_joined %>% 
-  select(observation_count) 
-  
-county_obs <- total_observations %>%
-  st_join(counties %>% select(namelsad, area)) %>%  # join county info onto points
-  st_drop_geometry() %>%
-  group_by(namelsad) %>%
-  summarize(
-    total_observations = sum(observation_count, na.rm = TRUE),
-    area = first(area)
-  ) %>%
-  mutate(
-    total_observations = replace_na(total_observations, 0),
-    density = total_observations / area
-  ) %>%
-  arrange(desc(density))
-
-
-point_area_county <- st_join(counties, point_area_obs) %>% 
-  st_drop_geometry() %>% 
-  group_by(namelsad) %>% 
-  summarize(total_observations = sum(observation_count))
-
-
-point_area_county$total_observations[is.na(point_area_county$total_observations)] <-  0
-
-county_obs <- left_join(counties, point_area_county,
-                        by = 'namelsad')
-
-county_obs <- county_obs %>% 
-  group_by(namelsad) %>% 
-  summarize(density = total_observations/area,
-            total_obs = total_observations)
-
-bluegreen <- colorRampPalette(colors = c('#4595D1', '#73B843'), bias = .5, space = 'Lab')
-
-county_obs_plot <- ggplot(county_obs)+
-  geom_sf(aes(fill = density))+
-  scale_fill_gradientn(colors = bluegreen(100))+
-  theme_void()+
-  theme(legend.position = 'none')
-
-ggsave(here('Outputs', 'figures', 'county_obs_plot.png'), county_obs_plot, scale = 1, width = 10, height = 10)
-
-
-county_obs %>%
-  rename(
-    "County Name" = namelsad,
-    "Total Observations" = total_observations,
-    "Area (km²)" = area,
-    "Density (#/km²)" = density
-  ) %>%
-  head(20) %>% 
-  kable() %>%
-  kable_styling(bootstrap_options = c("striped", "hover")) %>%
-  row_spec(0, background = point_blue)
-
+# Save plot combination
+ggsave(
+  filename = here::here("Outputs", "figures", 'habitat_plot.png'),
+  plot = habitat_plot,
+  width = 10,
+  height = 8,
+  dpi = 150
+)
 ```
 
 ## County observation map
 ```{r}
+
+# Pull county information for the state of California
+counties <- tigris::counties() %>% 
+  clean_names() %>% 
+  filter(statefp == '06') %>% 
+  # Transform area to be on km scale
+  mutate(area = (aland+awater)* 1e-6) %>% 
+  # Select only columns of interest
+  select(namelsad, area) %>% 
+  # Transform CRS to be the same as avian observations
+  st_transform(crs(birds_joined))
+
+
+# Save observation data as its own object
+total_observations <- birds_joined %>% 
+  select(observation_count) 
+  
+# Join observation data with county data using geometry
+county_obs <- total_observations %>%
+  st_join(counties %>% select(namelsad, area)) %>%  # join county info onto points
+  # Drop bird data geometry for faster processing
+  st_drop_geometry() %>%
+  # Group by county
+  group_by(namelsad) %>%
+  # Summarize total observations at the county level
+  summarize(
+    total_observations = sum(observation_count, na.rm = TRUE),
+    area = first(area)
+  ) %>%
+  # For areas without any observations, make NA = 0
+  mutate(
+    total_observations = replace_na(total_observations, 0),
+    # Calculate density from county area by observations
+    density = total_observations / area
+  ) %>%
+  # Arrange in data frame for easier viewing
+  arrange(desc(density))
+
+# Join counties information onto county observations
 county_obs_map <- counties %>%
   left_join(county_obs, by = "namelsad")
 
-ggplot(county_obs_map) +
+# Create map using county boundaries to plot observation density per county
+observation_map <- ggplot(county_obs_map) +
+  # Using county lines (black)
   geom_sf(aes(fill = density), color = "black", linewidth = 0.2) +
+  # Fill gradient by observations
   scale_fill_gradient(
   low = point_light_blue2,
+  # Set upper boundary color
   high = "#1a5276",
   name = "Observations/km²",
+  # Lower value color
   na.value = "grey90",
-  guide = guide_colorbar(barwidth = 15, barheight = 0.5)
+  # Color bar specifications
+  guide = guide_colorbar(barwidth = 15, barheight = 0.5, title.position = "top", title.hjust = 0.5)
 )+
   point_blue_theme() +
+  # Hide unwanted lines and labels
   theme(axis.text = element_blank(),
         axis.ticks = element_blank(),
-        panel.grid = element_blank()
+        panel.grid = element_blank(), 
+        # Put legend title on top of color bar
+        legend.title = element_text(size = 17),
+        # Legend is at bottom on map
+        legend.position = "bottom"
         ) +
   labs(
     title = "Bird Observations Are Concentrated in Northern California",
     subtitle = "Observation density by county"
   )
+
+
+ggsave(
+  filename = here::here("Outputs", "figures", "observation_map.png"),
+  plot = observation_map,
+  width = 10,
+  height = 8,
+  dpi = 150
+)
 ```
 
 
 
 ```{r}
+# Create data object to do biodiversity analysis on
 sts_biodiv <- birds_joined %>% 
+  # Apply gini simpson function to calculate biodiversity metrics
   gini_simpson() %>% 
+  # Drop geometry for faster processing
   st_drop_geometry() %>% 
+  # Group by year and protection binary
   group_by(year_collected, protection_sts) %>% 
+  # Mutate protection status column values for more accurate plot labels
   mutate(protection_sts = case_when(
   protection_sts == 'protected' ~ "30x30 protected",
   protection_sts == 'unprotected' ~ "non 30x30 protected"
 )) %>% 
+  # Summarize mean annual biodiversity for protected and non protected areas
   summarize(avg_biod = mean(rich_gini / sample_effort, na.rm = TRUE), .groups = "drop")
 
 ```
 
-<<<<<<< HEAD
 ## Habitat Complexity
 
 ```{r}
+# Create map of habitat areas in California 
 habitats <- tm_shape(habitat_poly) +
   tm_polygons(fill = 'LIFEFORM',
               fill.scale = tm_scale(
@@ -281,9 +329,9 @@ tmap_save(habitats, here('Outputs', 'figures', 'habitats.png'),
           bg = "transparent")
 ```
 
-I want a plot of all the 47 habitat types
 
 ```{r}
+# Plot all 47 possible habitats
 habitats_full <- rast(here('data','fveg22_1.gdb'))
 
 
@@ -297,9 +345,10 @@ tmap_save(habitats_whrall, here('Outputs', 'figures', 'habitats_whrall.png'),
 ```
 
 
-## Gap Plots
+## Gap Plots- displaying protected vs. unprotected areas in California
 
 ```{r}
+# Create mask for California boundary 
 california_shape <- tigris::states() %>% 
   filter(STUSPS == "CA")
 
@@ -308,6 +357,7 @@ bbox <- st_as_sfc(st_bbox(c(xmin = -128, xmax = -111, ymin = 29, ymax = 45),
 mask <- st_difference(bbox, st_union(california_shape))
 ```
 
+## Plot 30x30 protected areas using mask
 ```{r}
 gap1_2 <- tm_shape(mask, bbox = st_bbox(gap_clean)) +
   tm_polygons(fill = NA, col = NA) +
@@ -324,6 +374,7 @@ tmap_save(gap1_2, here('Outputs', 'figures', 'gap1_2.png'),
           bg = "transparent")
 ```
 
+## Plot 30x30 unprotected areas
 ```{r}
 gap3_4 <- tm_shape(mask, bbox = st_bbox(gap_clean)) +
   tm_polygons(fill = NA, col = NA) +
@@ -339,7 +390,7 @@ tmap_save(gap3_4,here('Outputs', 'figures', 'gap3_4.png'),
           bg = "transparent")
 ```
 
-
+# Plot unknown management intent areas
 ```{r}
 gap5 <- tm_shape(mask, bbox = st_bbox(gap_clean)) +
   tm_polygons(fill = NA, col = NA) +
@@ -355,6 +406,7 @@ tmap_save(gap5, here('Outputs', 'figures', 'gap5.png'),
           bg = "transparent")
 ```
 
+# Create basemap with no filled areas for presentation
 ```{r}
 basemap <- tm_shape(mask, bbox = st_bbox(gap_clean)) +
   tm_polygons(fill = NA, col = NA) +
@@ -366,7 +418,7 @@ tmap_save(basemap,  here('Outputs', 'figures', 'basemap.png'),
 ```
 
 
-## Table of cats
+## Table of aggregated habitat categories and subcategories
 
 ```{r}
 # Source geodatabase from CAL FIRE
@@ -382,10 +434,8 @@ cats <- cats(habitat_type)[[1]]
 lookup_habitat <- cats %>% 
   group_by(LIFEFORM) %>% 
   summarize(whr = paste(unique(WHRNAME), collapse = ', '))
-```
 
-Make into Kable 
-```{r}
+# Create summary table
 lookup_habitat %>% 
   mutate(LIFEFORM = str_to_title(LIFEFORM)) %>% 
   rename('Habitat Type' = LIFEFORM, 'Subtypes' = whr) %>% 
@@ -400,11 +450,9 @@ lookup_habitat %>%
 ```
 
 
-
-
-
 # Annual biodiversity averages model (simplified overview of protection effect and trends)
 ```{r}
+# Simple GLM using annual biodiv averages by protection
 mod_prot_main <- glm(
   avg_biod ~ year_collected + protection_sts,
   data = sts_biodiv,
@@ -441,7 +489,7 @@ prot_preds_main <- if (year_sig | prot_sig) {
   )
 }
 
-
+# Plot average biodiversity over time for unprotected and protected areas 
 avg_biodiv_protection_plot <- ggplot(
   sts_biodiv,
   aes(
@@ -451,6 +499,7 @@ avg_biodiv_protection_plot <- ggplot(
     fill = protection_sts
   )
 ) +
+  # Compare predictions to raw values
   geom_point(alpha = 0.5,
              size = 4,
              shape = 21) +
@@ -489,6 +538,7 @@ ggsave(
   dpi = 150
 )
 ```
+
 ## Focal species observations
 ```{r}
 # Load in focal species data
