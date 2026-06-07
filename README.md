@@ -84,6 +84,8 @@ Stores the functions used to complete analyses, including sourcing script and ri
 
 These data should be placed in a folder at the root labeled `data`
 
+*If you wish to test the analysis with available data, skip this next step and use the `birds_joined.parquet` file in the root. To use it create a data folder with another data_processed folder inside. The final should look like `data/data_processed/birds_joined.parquet`.*
+
 -   Next run `R/spatial_join.R`
 
     -   Make sure to update the names of the files in the imports
